@@ -20,7 +20,10 @@ set( ROS_CXX_DEPENDENCIES
         nav_msgs)
 
 # Find catkin and all required ROS components
-find_package(catkin REQUIRED COMPONENTS ${ROS_CXX_DEPENDENCIES} rostest)
+find_package(catkin REQUIRED COMPONENTS 
+             ${ROS_CXX_DEPENDENCIES} 
+             rostest
+             tf_conversions)
 find_package(PCL REQUIRED QUIET)
 
 # Find csm project

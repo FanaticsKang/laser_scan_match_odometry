@@ -15,7 +15,7 @@
   #### publish an example base_link -> laser transform ###########
 
   <node pkg="tf" type="static_transform_publisher" name="base_link_to_laser"
-    args="0.0 0.0 0.0 0.0 0.0 0.0 /base_link /laser 40" />
+    args="0.0 0.0 1.0 0.0 0.0 0.0 /base_link /laser 40" />
 
   #### start the laser_scan_matcher_odometry package ##############################
 

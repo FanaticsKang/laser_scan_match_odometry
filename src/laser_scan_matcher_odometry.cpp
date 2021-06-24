@@ -3,6 +3,7 @@
 //
 
 #include "laser_scan_matcher_odometry.h"
+#include "tf_conversions/tf_eigen.h"
 
 LaserScanMatcherOdometry::LaserScanMatcherOdometry(ros::NodeHandle nh,
                                                    ros::NodeHandle nh_private)
@@ -15,7 +16,7 @@ LaserScanMatcherOdometry::LaserScanMatcherOdometry(ros::NodeHandle nh,
 
   // **** init parameters
   initParams();
-  // world to body
+  // world to body!
   w2b_.setIdentity();
 
   v_x_ = 0;
@@ -29,6 +30,7 @@ LaserScanMatcherOdometry::LaserScanMatcherOdometry(ros::NodeHandle nh,
   last_vel_y_ = 0;
   last_vel_a_ = 0;
 
+  // pose of laser
   input_.laser[0] = 0.0;
   input_.laser[1] = 0.0;
   input_.laser[2] = 0.0;
@@ -276,13 +278,12 @@ void LaserScanMatcherOdometry::scanCallback(
   // **** if first scan, cache the tf from base to the scanner
 
   if (!initialized_) {
-    createCache(scan_msg);  // caches the sin and cos of all angles
-
     // cache the static tf from base to laser
     if (!getBaseToLaserTf(scan_msg->header.frame_id)) {
       ROS_WARN("ScanMatcher: Skipping scan");
       return;
     }
+    createCache(scan_msg);  // caches the sin and cos of all angles
 
     laserScanToLDP(scan_msg, prev_ldp_scan_);
     last_icp_time_ = scan_msg->header.stamp;
@@ -361,6 +362,7 @@ void LaserScanMatcherOdometry::processScan(LDP &curr_ldp_scan,
   tf::Transform pr_ch_l;
   pr_ch_l = laser_to_base_ * pr_ch * base_to_laser_;
 
+  // 设置初始值
   input_.first_guess[0] = pr_ch_l.getOrigin().getX();
   input_.first_guess[1] = pr_ch_l.getOrigin().getY();
   input_.first_guess[2] = getYawFromQuaternion(pr_ch_l.getRotation());
@@ -374,6 +376,8 @@ printf("%f, %f, %f\n", input_.first_guess[0],
   // *** scan match - using point to line icp from CSM
 
   sm_icp(&input_, &output_);
+  std::cout << "ouput_icp: " << output_.x[0] << " " << output_.x[1] << " "
+            << output_.x[2] * 180 / 3.1416 << " " << std::endl;
 
   if (output_.valid) {
     // the correction of the laser's position, in the laser frame
@@ -561,16 +565,19 @@ void LaserScanMatcherOdometry::laserScanToLDP(
 
     if (r > scan_msg->range_min && r < scan_msg->range_max) {
       // fill in laser scan data
-
+      // 是否有效
       ldp->valid[i] = 1;
+      // 距离
       ldp->readings[i] = r;
     } else {
       ldp->valid[i] = 0;
       ldp->readings[i] = -1;  // for invalid range
     }
 
+    //夹角
     ldp->theta[i] = scan_msg->angle_min + i * scan_msg->angle_increment;
 
+    // Hold on
     ldp->cluster[i] = -1;
   }
 
@@ -581,6 +588,7 @@ void LaserScanMatcherOdometry::laserScanToLDP(
   ldp->odometry[1] = 0.0;
   ldp->odometry[2] = 0.0;
 
+  // 初始化位置
   ldp->true_pose[0] = 0.0;
   ldp->true_pose[1] = 0.0;
   ldp->true_pose[2] = 0.0;
@@ -591,6 +599,8 @@ void LaserScanMatcherOdometry::createCache(
   a_cos_.clear();
   a_sin_.clear();
 
+  std::cout << "scan_msg->ranges.size(): " << scan_msg->ranges.size()
+            << std::endl;
   for (unsigned int i = 0; i < scan_msg->ranges.size(); ++i) {
     double angle = scan_msg->angle_min + i * scan_msg->angle_increment;
     a_cos_.push_back(cos(angle));
@@ -608,6 +618,9 @@ bool LaserScanMatcherOdometry::getBaseToLaserTf(const std::string &frame_id) {
   try {
     tf_listener_.waitForTransform(base_frame_, frame_id, t, ros::Duration(1.0));
     tf_listener_.lookupTransform(base_frame_, frame_id, t, base_to_laser_tf);
+    // Eigen::Affine3d pose;
+    // tf::poseTFToEigen(base_to_laser_tf, pose);
+    // std::cout << "base_to_laser: \n" << pose.matrix() << std::endl;
 
   } catch (tf::TransformException ex) {
     ROS_WARN("ScanMatcher: Could not get initial laser transform(%s)",
