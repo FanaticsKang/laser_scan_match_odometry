@@ -4,6 +4,7 @@
 
 #include "laser_scan_matcher_odometry.h"
 #include "tf_conversions/tf_eigen.h"
+#include "icp.h"
 
 LaserScanMatcherOdometry::LaserScanMatcherOdometry(ros::NodeHandle nh,
                                                    ros::NodeHandle nh_private)
@@ -375,6 +376,8 @@ printf("%f, %f, %f\n", input_.first_guess[0],
 
   // *** scan match - using point to line icp from CSM
 
+  IcpParams icp_params(input_);
+  IcpResult icp_result(output_);
   sm_icp(&input_, &output_);
   std::cout << "ouput_icp: " << output_.x[0] << " " << output_.x[1] << " "
             << output_.x[2] * 180 / 3.1416 << " " << std::endl;
