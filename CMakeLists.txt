@@ -20,6 +20,9 @@ set( ROS_CXX_DEPENDENCIES
         nav_msgs)
 
 # Find catkin and all required ROS components
+
+LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
+
 find_package(catkin REQUIRED COMPONENTS 
              ${ROS_CXX_DEPENDENCIES} 
              rostest
@@ -29,6 +32,8 @@ find_package(PCL REQUIRED QUIET)
 # Find csm project
 find_package(PkgConfig)
 pkg_check_modules(csm REQUIRED csm)
+
+find_package(Glog REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -222,10 +227,11 @@ catkin_package(
 #set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR/build}")
 
 # Create library
-add_library(laser_scan_matcher_odometry src/laser_scan_matcher_odometry.cpp)
+add_library(laser_scan_matcher_odometry src/laser_scan_matcher_odometry.cpp
+                                        include/icp_params.cc)
 
 #Note we don't link against pcl as we're using header-only parts of the library
-target_link_libraries(laser_scan_matcher_odometry ${catkin_LIBRARIES} ${cms_LIBRARIES})
+target_link_libraries(laser_scan_matcher_odometry ${catkin_LIBRARIES} ${cms_LIBRARIES} glog)
 add_dependencies(laser_scan_matcher_odometry ${csm_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 
@@ -234,7 +240,8 @@ file(GLOB LSM_ODOMETRY_SRCS ${CMAKE_CURRENT_LIST_DIR}/src/*.cpp)
 
 # create node
 add_executable(laser_scan_matcher_odometry_node "src/laser_scan_matcher_odometry_node.cpp" ${LSM_ODOMETRY_SRCS})
-target_link_libraries(laser_scan_matcher_odometry_node ${catkin_LIBRARIES} ${csm_LIBRARIES})
+target_link_libraries(laser_scan_matcher_odometry_node ${catkin_LIBRARIES} ${csm_LIBRARIES}
+                                                       laser_scan_matcher_odometry)
 #add_dependencies(laser_scan_matcher_odometry ${csm_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 # install library includes

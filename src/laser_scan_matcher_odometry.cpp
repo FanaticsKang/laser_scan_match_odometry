@@ -4,7 +4,9 @@
 
 #include "laser_scan_matcher_odometry.h"
 #include "tf_conversions/tf_eigen.h"
-#include "icp.h"
+
+#include "icp_params.h"
+#include "icp_result.h"
 
 LaserScanMatcherOdometry::LaserScanMatcherOdometry(ros::NodeHandle nh,
                                                    ros::NodeHandle nh_private)

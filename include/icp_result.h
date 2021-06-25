@@ -1,10 +1,6 @@
 #pragma once
 
 #include "csm/algos.h"
-class IcpParams : public sm_params {
- public:
-  IcpParams(const sm_params& base) : sm_params(base){};
-};
 
 class IcpResult : public sm_result {
  public:
