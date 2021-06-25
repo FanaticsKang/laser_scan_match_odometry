@@ -228,7 +228,8 @@ catkin_package(
 
 # Create library
 add_library(laser_scan_matcher_odometry src/laser_scan_matcher_odometry.cpp
-                                        include/icp_params.cc)
+                                        include/icp_params.cc
+                                        include/lidar_data.cc)
 
 #Note we don't link against pcl as we're using header-only parts of the library
 target_link_libraries(laser_scan_matcher_odometry ${catkin_LIBRARIES} ${cms_LIBRARIES} glog)
