@@ -1,4 +1,5 @@
 #include <glog/logging.h>
+#include <limits>
 
 #include "lidar_data.h"
 
@@ -13,6 +14,37 @@ int LidarData::CountEqual(const int* v, int n, int value) {
   }
   return num;
 };
+
+bool LidarData::ValidRay(const int i) {
+  return (i >= 0) && (i < this->nrays) && (this->valid[i]);
+}
+
+void LidarData::InvalidIfOutside(const double min_reading,
+                                 const double max_reading) {
+  for (int i = 0; i < this->nrays; ++i) {
+    if (!ValidRay(i)) {
+      continue;
+    }
+    const double r = this->readings[i];
+    if (r <= min_reading || r > max_reading) {
+      this->valid[i] = 0;
+    }
+  }
+}
+
+void LidarData::ComputeCartesian() {
+  for (int i = 0; i < this->nrays; i++) {
+    // if(!ld_valid_ray(this,i)) continue;
+    double x = cos(this->theta[i]) * this->readings[i];
+    double y = sin(this->theta[i]) * this->readings[i];
+
+    this->points[i].p[0] = x;
+    this->points[i].p[1] = y;
+    // TODO
+    this->points[i].rho = std::numeric_limits<double>::quiet_NaN();
+    this->points[i].phi = std::numeric_limits<double>::quiet_NaN();
+  }
+}
 
 bool LidarData::ValidLidar() {
   const int min_nrays = 10;
