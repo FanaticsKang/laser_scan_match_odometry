@@ -7,6 +7,22 @@ class LidarData : public laser_data {
   int CountEqual(const int* v, int n, int value);
   bool ValidLidar();
   void InvalidIfOutside(const double min_reading, const double max_reading);
-  bool ValidRay(const int i);
+  bool ValidRay(const int i) const;
   void ComputeCartesian();
+  void ComputeWorldCoords(const double* pose);
+
+  void SetNullCorrespondence(const int i);
+
+  void PossibleInterval(const double* p_i_w, double max_angular_correction_deg,
+                        double max_linear_correction, int* from, int* to,
+                        int* start_cell);
+
+  void SetCorrespondence(int i, int j1, int j2);
+  int NumValidCorrespondences();
+
+  unsigned int CorrHash();
+
+  int MinMax(int from, int to, int x) {
+    return (std::max)((std::min)(x, to), from);
+  }
 };

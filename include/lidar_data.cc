@@ -15,7 +15,7 @@ int LidarData::CountEqual(const int* v, int n, int value) {
   return num;
 };
 
-bool LidarData::ValidRay(const int i) {
+bool LidarData::ValidRay(const int i) const {
   return (i >= 0) && (i < this->nrays) && (this->valid[i]);
 }
 
@@ -29,6 +29,117 @@ void LidarData::InvalidIfOutside(const double min_reading,
     if (r <= min_reading || r > max_reading) {
       this->valid[i] = 0;
     }
+  }
+}
+
+unsigned int LidarData::CorrHash() {
+  unsigned int hash = 0;
+  unsigned int i = 0;
+
+  for (unsigned int i = 0; i < (unsigned)this->nrays; i++) {
+    int str =
+        this->corr[i].valid ? (this->corr[i].j1 + 1000 * this->corr[i].j2) : -1;
+
+    hash ^= ((i & 1) == 0) ? ((hash << 7) ^ (str) ^ (hash >> 3))
+                           : (~((hash << 11) ^ (str) ^ (hash >> 5)));
+  }
+
+  return (hash & 0x7FFFFFFF);
+}
+
+void LidarData::PossibleInterval(const double* p_i_w,
+                                 double max_angular_correction_deg,
+                                 double max_linear_correction, int* from,
+                                 int* to, int* start_cell) {
+  double angle_res = (this->max_theta - this->min_theta) / this->nrays;
+
+  /* Delta for the angle */
+  double delta = fabs(MathUtils::Deg2Rad(max_angular_correction_deg)) +
+                 fabs(atan(max_linear_correction / MathUtils::norm_d(p_i_w)));
+
+  /* Dimension of the cell range */
+  int range = (int)ceil(delta / angle_res);
+
+  /* To be turned into an interval of cells */
+  double start_theta = atan2(p_i_w[1], p_i_w[0]);
+
+  /* Make sure that start_theta is in the interval [min_theta,max_theta].
+     For example, -1 is not in [0, 2pi] */
+  if (start_theta < this->min_theta) start_theta += 2 * M_PI;
+  if (start_theta > this->max_theta) start_theta -= 2 * M_PI;
+
+  *start_cell = (int)((start_theta - this->min_theta) /
+                      (this->max_theta - this->min_theta) * this->nrays);
+
+  *from = MinMax(0, this->nrays - 1, *start_cell - range);
+  *to = MinMax(0, this->nrays - 1, *start_cell + range);
+
+  //   if (0)
+  //     printf(
+  //         "from: %d to: %d delta: %f start_theta: %f min/max theta: [%f,%f] "
+  //         "range: %d start_cell: %d\n",
+  //         *from, *to, delta, start_theta, this->min_theta, this->max_theta,
+  //         range, *start_cell);
+}
+int LidarData::NumValidCorrespondences() {
+  int num = 0;
+  for (int i = 0; i < this->nrays; i++) {
+    if (this->corr[i].valid) {
+      num++;
+    }
+  }
+  return num;
+}
+void LidarData::SetNullCorrespondence(const int i) {
+  this->corr[i].valid = 0;
+  this->corr[i].j1 = -1;
+  this->corr[i].j2 = -1;
+  this->corr[i].dist2_j1 =
+      std::numeric_limits<double>::quiet_NaN();  // GSL_NAN;
+}
+
+void LidarData::SetCorrespondence(int i, int j1, int j2) {
+  this->corr[i].valid = 1;
+  this->corr[i].j1 = j1;
+  this->corr[i].j2 = j2;
+}
+
+// TODO 改为Eigen
+void LidarData::ComputeWorldCoords(const double* pose) {
+  const double pose_x = pose[0];
+  const double pose_y = pose[1];
+  const double pose_theta = pose[2];
+  const double cos_theta = cos(pose_theta);
+  const double sin_theta = sin(pose_theta);
+  const int nrays = this->nrays;
+
+  point2d* points = this->points;
+  point2d* points_w = this->points_w;
+
+  for (int i = 0; i < nrays; i++) {
+    if (!ValidRay(i)) {
+      continue;
+    }
+    const double& x0 = points[i].p[0];
+    const double& y0 = points[i].p[1];
+
+    if (isnan(x0) || isnan(y0)) {
+      LOG(ERROR)
+          << "ld_compute_world_coords(): I expected that cartesian coords were "
+             "already computed: ray"
+          << i << x0 << y0;
+    }
+
+    points_w[i].p[0] = cos_theta * x0 - sin_theta * y0 + pose_x;
+    points_w[i].p[1] = sin_theta * x0 + cos_theta * y0 + pose_y;
+    /* polar coordinates */
+  }
+
+  for (int i = 0; i < nrays; i++) {
+    double x = points_w[i].p[0];
+    double y = points_w[i].p[1];
+    points_w[i].rho = sqrt(x * x + y * y);
+    points_w[i].phi = atan2(y, x);
   }
 }
 
@@ -61,12 +172,12 @@ bool LidarData::ValidLidar() {
     return false;
   }
 
-  const double min_fov = MathUtils::deg2rad(20.0);
+  const double min_fov = MathUtils::Deg2Rad(20.0);
   const double max_fov = 2.01 * M_PI;
   const double fov = this->max_theta - this->min_theta;
 
   if (fov < min_fov || fov > max_fov) {
-    LOG(ERROR) << "Strange FOV: " << fov << " rad : " << MathUtils::rad2deg(fov)
+    LOG(ERROR) << "Strange FOV: " << fov << " rad : " << MathUtils::Rad2Deg(fov)
                << " deg";
     return false;
   }
