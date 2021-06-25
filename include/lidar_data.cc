@@ -51,36 +51,46 @@ void LidarData::PossibleInterval(const double* p_i_w,
                                  double max_angular_correction_deg,
                                  double max_linear_correction, int* from,
                                  int* to, int* start_cell) {
-  double angle_res = (this->max_theta - this->min_theta) / this->nrays;
+  const double angle_res = (this->max_theta - this->min_theta) / this->nrays;
 
   /* Delta for the angle */
-  double delta = fabs(MathUtils::Deg2Rad(max_angular_correction_deg)) +
-                 fabs(atan(max_linear_correction / MathUtils::norm_d(p_i_w)));
+  // max_angular_correction_deg 是两帧之间最大的角度差
+  // max_linear_correction 是两帧之间最大的位移差
+  const double delta =
+      fabs(MathUtils::Deg2Rad(max_angular_correction_deg)) +
+      fabs(atan(max_linear_correction / MathUtils::Norm2D(p_i_w)));
 
   /* Dimension of the cell range */
-  int range = (int)ceil(delta / angle_res);
+  const int range = (int)ceil(delta / angle_res);
 
   /* To be turned into an interval of cells */
   double start_theta = atan2(p_i_w[1], p_i_w[0]);
 
   /* Make sure that start_theta is in the interval [min_theta,max_theta].
      For example, -1 is not in [0, 2pi] */
-  if (start_theta < this->min_theta) start_theta += 2 * M_PI;
-  if (start_theta > this->max_theta) start_theta -= 2 * M_PI;
+  if (start_theta < min_theta) {
+    start_theta += 2 * M_PI;
+  }
+  if (start_theta > max_theta) {
+    start_theta -= 2 * M_PI;
+  }
 
+  // *start_cell = (start_theta - this->min_theta) / angle_res;
   *start_cell = (int)((start_theta - this->min_theta) /
                       (this->max_theta - this->min_theta) * this->nrays);
 
   *from = MinMax(0, this->nrays - 1, *start_cell - range);
   *to = MinMax(0, this->nrays - 1, *start_cell + range);
 
-  //   if (0)
-  //     printf(
-  //         "from: %d to: %d delta: %f start_theta: %f min/max theta: [%f,%f] "
-  //         "range: %d start_cell: %d\n",
-  //         *from, *to, delta, start_theta, this->min_theta, this->max_theta,
-  //         range, *start_cell);
+  // LOG(WARNING) << "from: " << *from << " to: " << *to << " delta: " << delta
+  //              << " start_theta: " << start_theta
+  //              << " min/max theta: " << min_theta << " / " << max_theta
+  //              << " range: " << range << " start cell: " << *start_cell
+  //              << " max angular deg: " << max_angular_correction_deg
+  //              << " max_linear： " << max_linear_correction
+  //              << " norm_p: " << MathUtils::Norm2D(p_i_w);
 }
+
 int LidarData::NumValidCorrespondences() {
   int num = 0;
   for (int i = 0; i < this->nrays; i++) {

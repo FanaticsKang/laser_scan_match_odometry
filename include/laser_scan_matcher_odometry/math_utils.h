@@ -15,7 +15,7 @@ class MathUtils {
     }
     return t;
   }
-  static double norm_d(const double p[2]) {
+  static double Norm2D(const double p[2]) {
     return sqrt(p[0] * p[0] + p[1] * p[1]);
   }
 };

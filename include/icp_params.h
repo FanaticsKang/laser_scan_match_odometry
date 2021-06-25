@@ -22,6 +22,9 @@ class IcpParams : public sm_params {
               int* const valid, int* const iterations);
 
   void FindCorrespondences();
+  
+  // 删除多余的点
+  // 有两个laser_sens的点和一个laser_ref的点（j1对应）的距离都很近，则删除离得远的
   void KillOutliersDouble();
   double KillOutliersTrim();
 

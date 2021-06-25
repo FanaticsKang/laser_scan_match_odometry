@@ -25,4 +25,16 @@ class LidarData : public laser_data {
   int MinMax(int from, int to, int x) {
     return (std::max)((std::min)(x, to), from);
   }
+
+  int NextValid(int i, int dir) {
+    int j = i + dir;
+    while ((j < this->nrays) && (j >= 0) && !this->ValidRay(j)) {
+      j += dir;
+    }
+    return this->ValidRay(j) ? j : -1;
+  }
+
+  int NextValidUp(int i) { return NextValid(i, +1); }
+
+  int NextValidDown(int i) { return NextValid(i, -1); }
 };

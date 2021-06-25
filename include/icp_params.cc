@@ -9,7 +9,7 @@
 
 IcpParams::IcpParams(const sm_params& base) : sm_params(base) {}
 
-double norm_d(const double p[2]) { return sqrt(p[0] * p[0] + p[1] * p[1]); }
+double Norm2D(const double p[2]) { return sqrt(p[0] * p[0] + p[1] * p[1]); }
 // These function will be rebuild for Eigen
 int any_nan(const double* d, int n) {
   for (int i = 0; i < n; i++) {
@@ -371,7 +371,10 @@ double gpc_total_error(const std::vector<GpcCorr>& co, int n, const double* x) {
 }
 
 int IcpParams::Compatible(int i, int j) {
-  if (!this->do_alpha_test) return 1;
+  // 目前始终为 true
+  if (!this->do_alpha_test) {
+    return 1;
+  }
 
   double theta0 = 0; /* FIXME */
   if ((this->laser_sens->alpha_valid[i] == 0) ||
@@ -398,7 +401,8 @@ void IcpParams::FindCorrespondences() {
   LidarData* laser_ref = reinterpret_cast<LidarData*>(this->laser_ref);
   LidarData* laser_sens = reinterpret_cast<LidarData*>(this->laser_sens);
 
-  for (int i = 0; i < laser_sens->nrays; i++) {
+  for (int i = 0; i < laser_sens->nrays; ++i) {
+    // Check
     if (!laser_sens->ValidRay(i)) {
       laser_sens->SetNullCorrespondence(i);
       continue;
@@ -414,15 +418,19 @@ void IcpParams::FindCorrespondences() {
                                 this->max_linear_correction, &from, &to,
                                 &start_cell);
 
+    // 选择最邻近的点1(j1)
     for (int j = from; j <= to; j++) {
       if (!laser_ref->ValidRay(j)) {
         continue;
       }
 
       double dist = distance_squared_d(p_i_w, laser_ref->points[j].p);
-      if (dist > pow(this->max_correspondence_dist, 2)) continue;
+      if (dist > pow(this->max_correspondence_dist, 2)) {
+        continue;
+      }
 
       if ((-1 == j1) || (dist < best_dist)) {
+        // 目前Compatible始终为true, 没哟使用alpha_test
         if (Compatible(i, j)) {
           j1 = j;
           best_dist = dist;
@@ -430,23 +438,21 @@ void IcpParams::FindCorrespondences() {
       }
     }
 
-    if (j1 == -1) { /* no match */
+    // j1 == -1, 则没有满足项;
+    // j1不能是第一个和最后一个, 不处理极端情况
+    if (j1 == -1 || j1 == 0 || (j1 == (laser_ref->nrays - 1))) {
       laser_sens->SetNullCorrespondence(i);
       continue;
     }
-    /* Do not match with extrema*/
-    if (j1 == 0 || (j1 == (laser_ref->nrays - 1))) { /* no match */
+
+    const int j2up = laser_ref->NextValidUp(j1);
+    const int j2down = laser_ref->NextValidDown(j1);
+    if ((j2up == -1) && (j2down == -1)) {
       laser_sens->SetNullCorrespondence(i);
       continue;
     }
 
     int j2;
-    int j2up = ld_next_valid_up(laser_ref, j1);
-    int j2down = ld_next_valid_down(laser_ref, j1);
-    if ((j2up == -1) && (j2down == -1)) {
-      laser_sens->SetNullCorrespondence(i);
-      continue;
-    }
     if (j2up == -1) {
       j2 = j2down;
     } else if (j2down == -1) {
@@ -459,6 +465,7 @@ void IcpParams::FindCorrespondences() {
 
     laser_sens->SetCorrespondence(i, j1, j2);
     laser_sens->corr[i].dist2_j1 = best_dist;
+    // default TRUE.
     laser_sens->corr[i].type = this->use_point_to_line_distance
                                    ? correspondence::corr_pl
                                    : correspondence::corr_pp;
@@ -471,27 +478,25 @@ void IcpParams::KillOutliersDouble() {
   LDP laser_ref = this->laser_ref;
   LDP laser_sens = this->laser_sens;
 
-  // double dist2_i[laser_sens->nrays];
   std::vector<double> dist2_i(laser_sens->nrays, 0.0);
-  // double dist2_j[laser_ref->nrays];
-  std::vector<double> dist2_j(laser_ref->nrays, 0.0);
-  for (int j = 0; j < laser_ref->nrays; j++) {
-    dist2_j[j] = 1000000;
-  }
+  std::vector<double> dist2_j(laser_ref->nrays, 1000000);
 
   for (int i = 0; i < laser_sens->nrays; i++) {
-    if (!ld_valid_corr(laser_sens, i)) continue;
-    int j1 = laser_sens->corr[i].j1;
+    if (!laser_sens->corr[i].valid) {
+      continue;
+    }
+    const int j1 = laser_sens->corr[i].j1;
     dist2_i[i] = laser_sens->corr[i].dist2_j1;
     dist2_j[j1] = (std::min)(dist2_j[j1], dist2_i[i]);
   }
 
   int nkilled = 0;
   for (int i = 0; i < laser_sens->nrays; i++) {
-    if (!ld_valid_corr(laser_sens, i)) {
+    if (!laser_sens->corr[i].valid) {
       continue;
     }
-    int j1 = laser_sens->corr[i].j1;
+    const int j1 = laser_sens->corr[i].j1;
+    // 有两个laser_sens的点和一个laser_ref的点（j1对应）的距离都很近，则删除离得远的
     if (dist2_i[i] > (threshold * threshold) * dist2_j[j1]) {
       laser_sens->corr[i].valid = 0;
       nkilled++;
@@ -605,7 +610,7 @@ double IcpParams::KillOutliersTrim() {
 }
 
 int IcpParams::TerminationCriterion(const double* delta) {
-  double a = norm_d(delta);
+  double a = Norm2D(delta);
   double b = fabs(delta[2]);
   return (a < this->epsilon_xy) && (b < this->epsilon_theta);
 }
@@ -622,6 +627,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
   // 新一帧的位置
   LidarData* laser_sens = reinterpret_cast<LidarData*>(this->laser_sens);
   double x_old[3], delta[3], delta_old[3] = {0, 0, 0};
+  // x_old = q0, q0是迭代的起点
   copy_d(q0, 3, x_old);
   // unsigned int hashes[this->max_iterations];
   std::vector<unsigned int> hashes(this->max_iterations, 0);
@@ -648,7 +654,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
     // if (this->debug_verify_tricks) debug_correspondences(this);
 
     /* If not many correspondences, bail out */
-    int num_corr = laser_sens->NumValidCorrespondences();
+    const int num_corr = laser_sens->NumValidCorrespondences();
     double fail_perc = 0.05;
     if (num_corr < fail_perc * laser_sens->nrays) { /* TODO: arbitrary */
       LOG(ERROR) << "	: before trimming, only " << num_corr
@@ -661,6 +667,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
     if (this->outliers_remove_doubles) {
       KillOutliersDouble();
     }
+    // to be continue;
 
     int num_corr2 = laser_sens->NumValidCorrespondences();
 
