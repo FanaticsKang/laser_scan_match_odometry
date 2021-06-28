@@ -1,8 +1,22 @@
 #pragma once
 
-#include "csm/algos.h"
+#include "eigen3/Eigen/Core"
 
-class IcpResult : public sm_result {
+class IcpResult {
  public:
-  IcpResult(const sm_result& base) : sm_result(base){};
+  IcpResult() = default;
+
+ public:
+  /** 1 if the result is valid */
+  int valid_;
+
+  /** Scan matching result (x,y,theta) */
+  Eigen::Vector3d x_;
+
+  /** Number of iterations done */
+  int iterations_;
+  /** Number of valid correspondence in the end */
+  int nvalid_;
+  /** Total correspondence error */
+  double error_;
 };

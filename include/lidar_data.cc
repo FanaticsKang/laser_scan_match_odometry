@@ -5,7 +5,6 @@
 
 #include "lidar_data.h"
 
-
 int LidarData::CountEqual(const int* v, int n, int value) {
   int num = 0;
   for (int i = 0; i < n; ++i) {
@@ -116,6 +115,10 @@ void LidarData::SetCorrespondence(int i, int j1, int j2) {
 }
 
 // TODO 改为Eigen
+
+void LidarData::ComputeWorldCoords(Eigen::Vector3d* const pose) {
+  ComputeWorldCoords(pose->data());
+}
 void LidarData::ComputeWorldCoords(const double* pose) {
   const double pose_x = pose[0];
   const double pose_y = pose[1];

@@ -81,7 +81,7 @@ class LaserScanMatcherOdometry {
 
   // csm
   sm_params input_;
-  sm_result output_;
+//   sm_result output_;
   LDP prev_ldp_scan_;
 
   void initParams();

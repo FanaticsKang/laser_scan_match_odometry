@@ -673,7 +673,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
 }
 
 void IcpParams::PLIcp(IcpResult* const result) {
-  result->valid = 0;
+  result->valid_ = 0;
 
   LidarData* laser_ref = reinterpret_cast<LidarData*>(this->laser_ref);
   LidarData* laser_sens = reinterpret_cast<LidarData*>(this->laser_sens);
@@ -713,9 +713,9 @@ void IcpParams::PLIcp(IcpResult* const result) {
 
   if (!IcpLoop(x_old.data(), x_new.data(), &error, &nvalid, &iterations)) {
     // sm_error("icp: ICP failed for some reason. \n");
-    result->valid = 0;
-    result->iterations = iterations;
-    result->nvalid = 0;
+    result->valid_ = 0;
+    result->iterations_ = iterations;
+    result->nvalid_ = 0;
   } else {
     /* It was succesfull */
 
@@ -764,14 +764,14 @@ void IcpParams::PLIcp(IcpResult* const result) {
     }
 
     /* At last, we did it. */
-    result->valid = 1;
+    result->valid_ = 1;
     for (int i = 0; i < 3; ++i) {
-      result->x[i] = best_x[i];
+      result->x_[i] = best_x[i];
     }
     // sm_debug("icp: final x =  %s  \n", gsl_friendly_pose(best_x));
 
     if (restarted) {  // recompute correspondences in case of restarts
-      laser_sens->ComputeWorldCoords(result->x);
+      laser_sens->ComputeWorldCoords(&(result->x_));
       // if (this->use_corr_tricks)
       //   find_correspondences_tricks(this);
       // else
@@ -793,9 +793,9 @@ void IcpParams::PLIcp(IcpResult* const result) {
       // result->dx_dy2_m = egsl_v2gslm(dx_dy2);
     }
 
-    result->error = best_error;
-    result->iterations = iterations;
-    result->nvalid = nvalid;
+    result->error_ = best_error;
+    result->iterations_ = iterations;
+    result->nvalid_ = nvalid;
   }
 }
 

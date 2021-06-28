@@ -379,21 +379,21 @@ printf("%f, %f, %f\n", input_.first_guess[0],
   // *** scan match - using point to line icp from CSM
 
   IcpParams icp_params(input_);
-  IcpResult icp_result(output_);
+  IcpResult icp_result;
 
   icp_params.PLIcp(&icp_result);
   // sm_icp(&input_, &output_);
   // std::cout << "ouput_icp: " << output_.x[0] << " " << output_.x[1] << " "
   //           << output_.x[2] * 180 / 3.1416 << " " << std::endl;
-  output_ = icp_result;
 
-  if (output_.valid) {
+  if (icp_result.valid_) {
     // the correction of the laser's position, in the laser frame
 
     // printf("%f, %f, %f\n", output_.x[0], output_.x[1], output_.x[2]);
 
     tf::Transform corr_ch_l;
-    createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2], corr_ch_l);
+    createTfFromXYTheta(icp_result.x_[0], icp_result.x_[1], icp_result.x_[2],
+                        corr_ch_l);
 
     // the correction of the base's position, in the world frame
 

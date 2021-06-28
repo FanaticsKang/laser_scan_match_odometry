@@ -10,6 +10,7 @@ class LidarData : public laser_data {
   bool ValidRay(const int i) const;
   void ComputeCartesian();
   void ComputeWorldCoords(const double* pose);
+  void ComputeWorldCoords(Eigen::Vector3d* const pose);
 
   void SetNullCorrespondence(const int i);
 
