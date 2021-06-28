@@ -106,4 +106,34 @@ class MathUtils {
       Copy(b, 2, proj);
     }
   }
+
+  static void Ominus(const double x[3], double res[3]) {
+    double c = cos(x[2]);
+    double s = sin(x[2]);
+    res[0] = -c * x[0] - s * x[1];
+    res[1] = s * x[0] - c * x[1];
+    res[2] = -x[2];
+  }
+
+  /** safe if res == x1 */
+  static void Oplus(const double x1[3], const double x2[3], double res[3]) {
+    double c = cos(x1[2]);
+    double s = sin(x1[2]);
+    double x = x1[0] + c * x2[0] - s * x2[1];
+    double y = x1[1] + s * x2[0] + c * x2[1];
+    double theta = x1[2] + x2[2];
+    res[0] = x;
+    res[1] = y;
+    res[2] = theta;
+  }
+
+  static void PoseDiff(const double pose2[3], const double pose1[3],
+                       double res[3]) {
+    double temp[3];
+    Ominus(pose1, temp);
+    Oplus(temp, pose2, res);
+
+    while (res[2] > +M_PI) res[2] -= 2 * M_PI;
+    while (res[2] < -M_PI) res[2] += 2 * M_PI;
+  }
 };

@@ -6,7 +6,9 @@
 #include "math_utils.h"
 
 struct GpcCorr {
+  // current point
   double p[2];
+  // reference point
   double q[2];
 
   double C[2][2];
@@ -39,4 +41,12 @@ class IcpParams : public sm_params {
 
   int TerminationCriterion(const double* delta);
   int Compatible(const int i, const int j);
+  int GpcSolve(int K, const std::vector<GpcCorr>& c, const double* x0,
+               const double* cov_x0, double* x_out);
+  double GpcTotalError(const std::vector<GpcCorr>& co, int n, const double* x);
+
+  // PLICP解析解，见PL-ICP原文附录
+  double GpcError(const struct GpcCorr* co, const double* x);
+
+  int PolyGreatestRealRoot(int n, const double* a, double* root);
 };

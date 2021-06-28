@@ -382,9 +382,10 @@ printf("%f, %f, %f\n", input_.first_guess[0],
   IcpResult icp_result(output_);
 
   icp_params.PLIcp(&icp_result);
-  sm_icp(&input_, &output_);
-  std::cout << "ouput_icp: " << output_.x[0] << " " << output_.x[1] << " "
-            << output_.x[2] * 180 / 3.1416 << " " << std::endl;
+  // sm_icp(&input_, &output_);
+  // std::cout << "ouput_icp: " << output_.x[0] << " " << output_.x[1] << " "
+  //           << output_.x[2] * 180 / 3.1416 << " " << std::endl;
+  output_ = icp_result;
 
   if (output_.valid) {
     // the correction of the laser's position, in the laser frame

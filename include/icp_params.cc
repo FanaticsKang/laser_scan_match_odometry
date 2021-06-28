@@ -11,35 +11,7 @@ IcpParams::IcpParams(const sm_params& base) : sm_params(base) {}
 
 double Norm2D(const double p[2]) { return sqrt(p[0] * p[0] + p[1] * p[1]); }
 
-void ominus_d(const double x[3], double res[3]) {
-  double c = cos(x[2]);
-  double s = sin(x[2]);
-  res[0] = -c * x[0] - s * x[1];
-  res[1] = s * x[0] - c * x[1];
-  res[2] = -x[2];
-}
-
-/** safe if res == x1 */
-void oplus_d(const double x1[3], const double x2[3], double res[3]) {
-  double c = cos(x1[2]);
-  double s = sin(x1[2]);
-  double x = x1[0] + c * x2[0] - s * x2[1];
-  double y = x1[1] + s * x2[0] + c * x2[1];
-  double theta = x1[2] + x2[2];
-  res[0] = x;
-  res[1] = y;
-  res[2] = theta;
-}
-void pose_diff_d(const double pose2[3], const double pose1[3], double res[3]) {
-  double temp[3];
-  ominus_d(pose1, temp);
-  oplus_d(temp, pose2, res);
-
-  while (res[2] > +M_PI) res[2] -= 2 * M_PI;
-  while (res[2] < -M_PI) res[2] += 2 * M_PI;
-}
-
-int poly_greatest_real_root(int n, const double* a, double* root) {
+int IcpParams::PolyGreatestRealRoot(int n, const double* a, double* root) {
   Eigen::VectorXd poly_coeffs(n);
   for (int i = 0; i < n; i++) {
     poly_coeffs(i) = a[i];
@@ -85,8 +57,8 @@ int poly_greatest_real_root(int n, const double* a, double* root) {
   return 1;
 }
 
-int gpc_solve(int K, const std::vector<GpcCorr>& c, const double* x0,
-              const double* cov_x0, double* x_out) {
+int IcpParams::GpcSolve(int total_num, const std::vector<GpcCorr>& c,
+                        const double* x0, const double* cov_x0, double* x_out) {
   (void)x0;
   (void)cov_x0;
   Eigen::Matrix4d bigM;
@@ -111,9 +83,10 @@ int gpc_solve(int K, const std::vector<GpcCorr>& c, const double* x0,
   double d_bigM[4][4] = {
       {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}};
   double d_g[4] = {0, 0, 0, 0};
-  int k;
-  for (k = 0; k < K; k++) {
-    if (!c[k].valid) continue;
+  for (int k = 0; k < total_num; k++) {
+    if (!c[k].valid) {
+      continue;
+    }
 
     double C00 = c[k].C[0][0];
     double C01 = c[k].C[0][1];
@@ -125,6 +98,7 @@ int gpc_solve(int K, const std::vector<GpcCorr>& c, const double* x0,
       return 0;
     }
 
+    // 取出了参考点（q）, 当前点（p）和一个方向矩阵（C）
     double qx = c[k].q[0];
     double qy = c[k].q[1];
     double px = c[k].p[0];
@@ -250,7 +224,7 @@ int gpc_solve(int K, const std::vector<GpcCorr>& c, const double* x0,
                  -(l[2] * l[2])};
 
   double lambda;
-  if (!poly_greatest_real_root(5, q, &lambda)) return 0;
+  if (!PolyGreatestRealRoot(5, q, &lambda)) return 0;
 
   Eigen::Matrix<double, 4, 4> W;
   W.setZero();
@@ -271,7 +245,7 @@ int gpc_solve(int K, const std::vector<GpcCorr>& c, const double* x0,
   return 1;
 }
 
-double gpc_error(const struct GpcCorr* co, const double* x) {
+double IcpParams::GpcError(const struct GpcCorr* co, const double* x) {
   double c = cos(x[2]);
   double s = sin(x[2]);
   double e[2];
@@ -291,12 +265,13 @@ double gpc_error(const struct GpcCorr* co, const double* x) {
   return this_error;
 }
 
-double gpc_total_error(const std::vector<GpcCorr>& co, int n, const double* x) {
+double IcpParams::GpcTotalError(const std::vector<GpcCorr>& co, int n,
+                                const double* x) {
   int i;
   double error = 0;
   for (i = 0; i < n; i++) {
     if (!co[i].valid) continue;
-    error += gpc_error(&(co.at(i)), x);
+    error += GpcError(&(co.at(i)), x);
   }
   if (0) /* due to limited numerical precision, error might be negative */
     if (error < 0) {
@@ -641,7 +616,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
       all_is_okay = 0;
       break;
     }
-    pose_diff_d(x_new, x_old, delta);
+    MathUtils::PoseDiff(x_new, x_old, delta);
 
     // {
     //   sm_debug(
@@ -742,6 +717,85 @@ void IcpParams::PLIcp(IcpResult* const result) {
     result->iterations = iterations;
     result->nvalid = 0;
   } else {
+    /* It was succesfull */
+
+    int restarted = 0;
+    double best_error = error;
+    Eigen::Vector3d best_x = x_new;
+
+    if (this->restart &&
+        (error / nvalid) > (this->restart_threshold_mean_error)) {
+      LOG(WARNING) << "Restarting: " << (error / nvalid) << " > "
+                   << this->restart_threshold_mean_error;
+      restarted = 1;
+      double dt = this->restart_dt;
+      double dth = this->restart_dtheta;
+      // sm_debug("icp_loop: dt = %f dtheta= %f deg\n", dt, rad2deg(dth));
+
+      double perturb[6][3] = {{dt, 0, 0},  {-dt, 0, 0}, {0, dt, 0},
+                              {0, -dt, 0}, {0, 0, dth}, {0, 0, -dth}};
+
+      int a;
+      for (a = 0; a < 6; a++) {
+        // sm_debug("-- Restarting with perturbation #%d\n", a);
+        IcpParams my_params = *this;
+        Eigen::Vector3d start;
+        start[0] = x_new[0] + perturb[a][0];
+        start[1] = x_new[1] + perturb[a][1];
+        start[2] = x_new[2] + perturb[a][2];
+        Eigen::Vector3d x_a;
+        double my_error;
+        int my_valid;
+        int my_iterations;
+        if (!my_params.IcpLoop(start.data(), x_a.data(), &my_error, &my_valid,
+                               &my_iterations)) {
+          // sm_error("Error during restart #%d/%d. \n", a, 6);
+          break;
+        }
+        iterations += my_iterations;
+
+        if (my_error < best_error) {
+          // sm_debug("--Perturbation #%d resulted in error %f < %f\n", a,
+          //          my_error, best_error);
+          best_x = x_a;
+          best_error = my_error;
+        }
+      }
+    }
+
+    /* At last, we did it. */
+    result->valid = 1;
+    for (int i = 0; i < 3; ++i) {
+      result->x[i] = best_x[i];
+    }
+    // sm_debug("icp: final x =  %s  \n", gsl_friendly_pose(best_x));
+
+    if (restarted) {  // recompute correspondences in case of restarts
+      laser_sens->ComputeWorldCoords(result->x);
+      // if (this->use_corr_tricks)
+      //   find_correspondences_tricks(this);
+      // else
+      FindCorrespondences();
+    }
+
+    if (this->do_compute_covariance) {
+      // TODO
+      // val cov0_x, dx_dy1, dx_dy2;
+      // compute_covariance_exact(laser_ref, laser_sens, best_x, &cov0_x,
+      // &dx_dy1,
+      //                          &dx_dy2);
+
+      // val cov_x = sc(square(this->sigma), cov0_x);
+      // /*			egsl_v2da(cov_x, result->cov_x); */
+
+      // result->cov_x_m = egsl_v2gslm(cov_x);
+      // result->dx_dy1_m = egsl_v2gslm(dx_dy1);
+      // result->dx_dy2_m = egsl_v2gslm(dx_dy2);
+    }
+
+    result->error = best_error;
+    result->iterations = iterations;
+    result->nvalid = nvalid;
   }
 }
 
@@ -779,6 +833,7 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       diff[0] = laser_ref->points[j1].p[0] - laser_ref->points[j2].p[0];
       diff[1] = laser_ref->points[j1].p[1] - laser_ref->points[j2].p[1];
       double one_on_norm = 1 / sqrt(diff[0] * diff[0] + diff[1] * diff[1]);
+      // 误差归一化
       double normal[2];
       normal[0] = +diff[1] * one_on_norm;
       normal[1] = -diff[0] * one_on_norm;
@@ -786,6 +841,7 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       double cos_alpha = normal[0];
       double sin_alpha = normal[1];
 
+      // 2D方向余旋矩阵
       c[k].C[0][0] = cos_alpha * cos_alpha;
       c[k].C[1][0] = c[k].C[0][1] = cos_alpha * sin_alpha;
       c[k].C[1][1] = sin_alpha * sin_alpha;
@@ -809,6 +865,7 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
 
     /* Scale the correspondence weight by a factor concerning the
        information in this reading. */
+    // not work
     if (this->use_ml_weights) {
       int have_alpha = 0;
       double alpha = 0;
@@ -817,10 +874,10 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
         have_alpha = 1;
       } else if (laser_ref->alpha_valid[j1]) {
         alpha = laser_ref->alpha[j1];
-        ;
         have_alpha = 1;
-      } else
+      } else {
         have_alpha = 0;
+      }
 
       if (have_alpha) {
         double pose_theta = x_old[2];
@@ -843,6 +900,7 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
     }
 
     /* Weight the points by the sigma in laser_sens */
+    // not work
     if (this->use_sigma_weights) {
       if (!isnan(laser_sens->readings_sigma[i])) {
         factor *= 1 / pow(laser_sens->readings_sigma[i], 2);
@@ -868,14 +926,15 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
   const double inv_cov_x0[9] = {
       1 / (std * std), 0, 0, 0, 1 / (std * std), 0, 0, 0, 0};
 
-  int ok = gpc_solve(k, c, 0, inv_cov_x0, x_new);
+  // Core
+  int ok = GpcSolve(k, c, 0, inv_cov_x0, x_new);
   if (!ok) {
     LOG(ERROR) << "gpc_solve_valid failed";
     return 0;
   }
 
-  double old_error = gpc_total_error(c, k, x_old);
-  double new_error = gpc_total_error(c, k, x_new);
+  double old_error = GpcTotalError(c, k, x_old);
+  double new_error = GpcTotalError(c, k, x_new);
 
   // sm_debug("\tcompute_next_estimate: old error: %f  x_old= %s \n",
   // old_error,
