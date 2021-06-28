@@ -18,14 +18,18 @@ class IcpParams : public sm_params {
  public:
   IcpParams(const sm_params& base);
   void PLIcp(IcpResult* const result);
+  // 循环计算ICP, q0为初始位置(x,y,theta)；
   int IcpLoop(double* const q0, double* const x_new, double* const total_error,
               int* const valid, int* const iterations);
 
+  // laser_ref 和 laser_sens 之间的数据关联
   void FindCorrespondences();
-  
+
   // 删除多余的点
   // 有两个laser_sens的点和一个laser_ref的点（j1对应）的距离都很近，则删除离得远的
   void KillOutliersDouble();
+
+  // 设置阈值，删除相应的点，如误差小于全部的90%，则有效, 否则删除。
   double KillOutliersTrim();
 
   void SwapDouble(double* a, double* b);

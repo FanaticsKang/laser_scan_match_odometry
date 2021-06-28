@@ -10,71 +10,6 @@
 IcpParams::IcpParams(const sm_params& base) : sm_params(base) {}
 
 double Norm2D(const double p[2]) { return sqrt(p[0] * p[0] + p[1] * p[1]); }
-// These function will be rebuild for Eigen
-int any_nan(const double* d, int n) {
-  for (int i = 0; i < n; i++) {
-    if (isnan(d[i])) {
-      return 1;
-    }
-  }
-  return 0;
-}
-
-void copy_d(const double* from, int n, double* to) {
-  for (int i = 0; i < n; i++) {
-    to[i] = from[i];
-  }
-}
-
-double distance_squared_d(const double a[2], const double b[2]) {
-  double x = a[0] - b[0];
-  double y = a[1] - b[1];
-  return x * x + y * y;
-}
-
-void projection_on_line_d(const double a[2], const double b[2],
-                          const double p[2], double res[2], double* distance) {
-  double t0 = a[0] - b[0];
-  double t1 = a[1] - b[1];
-  double one_on_r = 1 / sqrt(t0 * t0 + t1 * t1);
-  /* normal */
-  double nx = t1 * one_on_r;
-  double ny = -t0 * one_on_r;
-  double c = nx, s = ny;
-  double rho = c * a[0] + s * a[1];
-
-  res[0] = c * rho + s * s * p[0] - c * s * p[1];
-  res[1] = s * rho - c * s * p[0] + c * c * p[1];
-
-  if (distance) *distance = fabs(rho - (c * p[0] + s * p[1]));
-}
-
-double dist_to_segment_d(const double a[2], const double b[2],
-                         const double x[2]) {
-  double proj[2];
-  double distance;
-  projection_on_line_d(a, b, x, proj, &distance);
-  if ((proj[0] - a[0]) * (proj[0] - b[0]) +
-          (proj[1] - a[1]) * (proj[1] - b[1]) <
-      0) {
-    /* the projection is inside the segment */
-    return distance;
-  } else
-    return sqrt((std::min)(distance_squared_d(a, x), distance_squared_d(b, x)));
-}
-
-void projection_on_segment_d(const double a[2], const double b[2],
-                             const double x[2], double proj[2]) {
-  projection_on_line_d(a, b, x, proj, 0);
-  if ((proj[0] - a[0]) * (proj[0] - b[0]) +
-          (proj[1] - a[1]) * (proj[1] - b[1]) <
-      0) {
-    /* the projection is inside the segment */
-  } else if (distance_squared_d(a, x) < distance_squared_d(b, x))
-    copy_d(a, 2, proj);
-  else
-    copy_d(b, 2, proj);
-}
 
 void ominus_d(const double x[3], double res[3]) {
   double c = cos(x[2]);
@@ -424,7 +359,7 @@ void IcpParams::FindCorrespondences() {
         continue;
       }
 
-      double dist = distance_squared_d(p_i_w, laser_ref->points[j].p);
+      double dist = MathUtils::DistanceSquared(p_i_w, laser_ref->points[j].p);
       if (dist > pow(this->max_correspondence_dist, 2)) {
         continue;
       }
@@ -458,14 +393,17 @@ void IcpParams::FindCorrespondences() {
     } else if (j2down == -1) {
       j2 = j2up;
     } else {
-      double dist_up = distance_squared_d(p_i_w, laser_ref->points[j2up].p);
-      double dist_down = distance_squared_d(p_i_w, laser_ref->points[j2down].p);
+      // 取距离近的
+      const double dist_up =
+          MathUtils::DistanceSquared(p_i_w, laser_ref->points[j2up].p);
+      const double dist_down =
+          MathUtils::DistanceSquared(p_i_w, laser_ref->points[j2down].p);
       j2 = dist_up < dist_down ? j2up : j2down;
     }
 
     laser_sens->SetCorrespondence(i, j1, j2);
     laser_sens->corr[i].dist2_j1 = best_dist;
-    // default TRUE.
+    // use_point_to_line_distance default TRUE.
     laser_sens->corr[i].type = this->use_point_to_line_distance
                                    ? correspondence::corr_pl
                                    : correspondence::corr_pp;
@@ -543,14 +481,13 @@ double IcpParams::KillOutliersTrim() {
 
   /* dist2, indexed by k, contains the error for the k-th correspondence */
   int k = 0;
-  // double dist2[laser_sens->nrays];
-  std::vector<double> dist2(laser_sens->nrays, 0.0);
 
-  int i;
-  // double dist[laser_sens->nrays];
+  // dist2 是顺序所有有效间距，dist会跳过没有的
+  std::vector<double> dist2(laser_sens->nrays, 0.0);
   std::vector<double> dist(laser_sens->nrays, 0.0);
+
   /* for each point in laser_sens */
-  for (i = 0; i < laser_sens->nrays; i++) {
+  for (int i = 0; i < laser_sens->nrays; i++) {
     /* which has a valid correspondence */
     if (!laser_sens->corr[i].valid) {
       dist[i] = std::numeric_limits<double>::quiet_NaN();
@@ -561,8 +498,8 @@ double IcpParams::KillOutliersTrim() {
     int j1 = laser_sens->corr[i].j1;
     int j2 = laser_sens->corr[i].j2;
     /* Compute the distance to the corresponding segment */
-    dist[i] = dist_to_segment_d(laser_ref->points[j1].p,
-                                laser_ref->points[j2].p, p_i_w);
+    dist[i] = MathUtils::DistToSegment(laser_ref->points[j1].p,
+                                       laser_ref->points[j2].p, p_i_w);
     dist2[k] = dist[i];
     k++;
   }
@@ -570,11 +507,13 @@ double IcpParams::KillOutliersTrim() {
   /* two errors limits are defined: */
   /* In any case, we don't want more than outliers_maxPerc% */
   int order = (int)floor(k * (this->outliers_maxPerc));
+  // Looks like MinMax
   order = (std::max)(0, (std::min)(order, k - 1));
 
   /* The dists for the correspondence are sorted
      in ascending order */
   QuickSort(dist2, 0, k - 1);
+  // outliers_maxPerc default 0.9, 这里取90%的误差作为误差阈值
   double error_limit1 = dist2[order];
 
   /* Then we take a order statics (o*K) */
@@ -591,8 +530,10 @@ double IcpParams::KillOutliersTrim() {
 
   double total_error = 0;
   int nvalid = 0;
-  for (i = 0; i < laser_sens->nrays; i++) {
-    if (!ld_valid_corr(laser_sens, i)) continue;
+  for (int i = 0; i < laser_sens->nrays; i++) {
+    if (!laser_sens->corr[i].valid) {
+      continue;
+    }
     if (dist[i] > error_limit) {
       laser_sens->corr[i].valid = 0;
       laser_sens->corr[i].j1 = -1;
@@ -618,7 +559,7 @@ int IcpParams::TerminationCriterion(const double* delta) {
 int IcpParams::IcpLoop(double* const q0, double* const x_new,
                        double* const total_error, int* const valid,
                        int* const iterations) {
-  if (any_nan(q0, 3)) {
+  if (MathUtils::AnyNan(q0, 3)) {
     // LOG(ERROR) << "icp_loop: Initial pose contains nan: " <<
     // friendly_pose(q0);
     return 0;
@@ -627,9 +568,10 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
   // 新一帧的位置
   LidarData* laser_sens = reinterpret_cast<LidarData*>(this->laser_sens);
   double x_old[3], delta[3], delta_old[3] = {0, 0, 0};
-  // x_old = q0, q0是迭代的起点
-  copy_d(q0, 3, x_old);
-  // unsigned int hashes[this->max_iterations];
+
+  // x_old <- q0, q0是迭代的起点
+  MathUtils::Copy(q0, 3, x_old);
+
   std::vector<unsigned int> hashes(this->max_iterations, 0);
 
   // sm_debug("icp: starting at  q0 =  %s  \n", friendly_pose(x_old));
@@ -643,10 +585,10 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
     laser_sens->ComputeWorldCoords(x_old);
 
     /** Find correspondences (the naif or smart way) */
+    // TODO
     // if (this->use_corr_tricks)
     //   find_correspondences_tricks(this);
     // else
-    // TODO
     FindCorrespondences();
 
     /** If debug_verify_tricks, make sure that find_correspondences_tricks()
@@ -667,12 +609,17 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
     if (this->outliers_remove_doubles) {
       KillOutliersDouble();
     }
-    // to be continue;
 
-    int num_corr2 = laser_sens->NumValidCorrespondences();
+    const int num_corr2 = laser_sens->NumValidCorrespondences();
 
     double error = this->KillOutliersTrim();
-    int num_corr_after = laser_sens->NumValidCorrespondences();
+
+    const int num_corr_after = laser_sens->NumValidCorrespondences();
+
+    LOG(INFO) << "Laser_sens has " << laser_sens->nrays
+              << " rays valid. Corr found: " << num_corr
+              << ", after double cut: " << num_corr2
+              << ", after adaptive cut: " << num_corr_after;
 
     *total_error = error;
     *valid = num_corr_after;
@@ -739,8 +686,8 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
       break;
     }
 
-    copy_d(x_new, 3, x_old);
-    copy_d(delta, 3, delta_old);
+    MathUtils::Copy(x_new, 3, x_old);
+    MathUtils::Copy(delta, 3, delta_old);
 
     // egsl_pop_named("icp_loop iteration");
   }
@@ -753,21 +700,22 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
 void IcpParams::PLIcp(IcpResult* const result) {
   result->valid = 0;
 
-  LidarData laser_ref(*(this->laser_ref));
-  LidarData laser_sens(*(this->laser_sens));
+  LidarData* laser_ref = reinterpret_cast<LidarData*>(this->laser_ref);
+  LidarData* laser_sens = reinterpret_cast<LidarData*>(this->laser_sens);
 
-  if (!laser_ref.ValidLidar() || !laser_sens.ValidLidar()) {
+  if (!laser_ref->ValidLidar() || !laser_sens->ValidLidar()) {
     return;
   }
-  laser_ref.InvalidIfOutside(this->min_reading, this->max_reading);
-  laser_sens.InvalidIfOutside(this->min_reading, this->max_reading);
+  laser_ref->InvalidIfOutside(this->min_reading, this->max_reading);
+  laser_sens->InvalidIfOutside(this->min_reading, this->max_reading);
 
   // TODO
   // if(this->use_corr_tricks ||this->debug_verify_tricks)
   // 	ld_create_jump_tables(laser_ref);
 
-  laser_ref.ComputeCartesian();
-  laser_sens.ComputeCartesian();
+  // Origin laser is range and bearing, here compute as Cartesian.
+  laser_ref->ComputeCartesian();
+  laser_sens->ComputeCartesian();
 
   // TODO
   // if (this->do_alpha_test) {
@@ -807,9 +755,13 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
 
   int k = 0;
   for (int i = 0; i < laser_sens->nrays; i++) {
-    if (!laser_sens->valid[i]) continue;
+    if (!laser_sens->valid[i]) {
+      continue;
+    }
 
-    if (!ld_valid_corr(laser_sens, i)) continue;
+    if (!laser_sens->corr[i].valid) {
+      continue;
+    }
 
     int j1 = laser_sens->corr[i].j1;
     int j2 = laser_sens->corr[i].j2;
@@ -842,8 +794,9 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       c[k].p[0] = laser_sens->points[i].p[0];
       c[k].p[1] = laser_sens->points[i].p[1];
 
-      projection_on_segment_d(laser_ref->points[j1].p, laser_ref->points[j2].p,
-                              laser_sens->points_w[i].p, c[k].q);
+      MathUtils::ProjectionOnSegment(laser_ref->points[j1].p,
+                                     laser_ref->points[j2].p,
+                                     laser_sens->points_w[i].p, c[k].q);
 
       /* Identity matrix */
       c[k].C[0][0] = 1;

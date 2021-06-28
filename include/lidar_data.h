@@ -13,6 +13,7 @@ class LidarData : public laser_data {
 
   void SetNullCorrespondence(const int i);
 
+  // 该激光点可能的起始点, start cell 为中心值，from 和 to 在start cell左右.
   void PossibleInterval(const double* p_i_w, double max_angular_correction_deg,
                         double max_linear_correction, int* from, int* to,
                         int* start_cell);
@@ -28,6 +29,7 @@ class LidarData : public laser_data {
 
   int NextValid(int i, int dir) {
     int j = i + dir;
+    // 在范围内，且有效
     while ((j < this->nrays) && (j >= 0) && !this->ValidRay(j)) {
       j += dir;
     }

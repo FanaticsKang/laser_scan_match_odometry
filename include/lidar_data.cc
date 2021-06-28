@@ -1,9 +1,10 @@
 #include <glog/logging.h>
 #include <limits>
 
+#include "math_utils.h"
+
 #include "lidar_data.h"
 
-#include "math_utils.h"
 
 int LidarData::CountEqual(const int* v, int n, int value) {
   int num = 0;
