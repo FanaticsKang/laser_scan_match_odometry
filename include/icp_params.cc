@@ -3,7 +3,13 @@
 #include <glog/logging.h>
 #include <eigen3/Eigen/Core>
 #include <eigen3/unsupported/Eigen/Polynomials>
+#include "g2o/core/block_solver.h"
+#include "g2o/core/optimization_algorithm_gauss_newton.h"
+#include "g2o/core/robust_kernel_impl.h"
+#include "g2o/solvers/dense/linear_solver_dense.h"
+#include "toc.h"
 
+#include "edge_point_to_line.h"
 #include "icp_params.h"
 #include "math_utils.h"
 
@@ -55,6 +61,58 @@ int IcpParams::PolyGreatestRealRoot(int n, const double* a, double* root) {
 
   *root = lambda;
   return 1;
+}
+
+bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connection,
+                                  const Eigen::Vector3d& x_old,
+                                  Eigen::Vector3d* const x_new) {
+  g2o::SparseOptimizer optimizer;
+
+  typedef g2o::BlockSolver<g2o::BlockSolverTraits<3, 1> > BlockSolver_3_1;
+  // 注意
+  BlockSolver_3_1::LinearSolverType* linearSolver;
+
+  linearSolver = new g2o::LinearSolverDense<BlockSolver_3_1::PoseMatrixType>();
+
+  BlockSolver_3_1* solver_ptr = new BlockSolver_3_1(linearSolver);
+
+  g2o::OptimizationAlgorithmGaussNewton* solver =
+      new g2o::OptimizationAlgorithmGaussNewton(solver_ptr);
+  optimizer.setAlgorithm(solver);
+
+  g2o::SE2 se2(x_old);
+  g2o::VertexSE2* vertex_se2 = new g2o::VertexSE2();
+  vertex_se2->setEstimate(se2);
+  vertex_se2->setId(0);
+  vertex_se2->setFixed(false);
+  optimizer.addVertex(vertex_se2);
+
+  const double th_huber = sqrt(3.841);
+
+  for (auto& one_connection : connection) {
+    Eigen::Vector2d point(one_connection.p[0], one_connection.p[1]);
+    EdgePointToLine* edge = new EdgePointToLine(point, one_connection.line);
+    edge->setVertex(
+        0, static_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
+    edge->setMeasurement(0);
+    edge->setInformation(Eigen::Matrix<double, 1, 1>::Identity());
+
+    // g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+    // edge->setRobustKernel(rk);
+    // rk->setDelta(th_huber);
+
+    optimizer.addEdge(edge);
+  }
+  // optimizer.setVerbose(true);
+  optimizer.initializeOptimization();
+
+  Alpha::TicToc tic;
+  optimizer.optimize(3);
+  std::cout << "Optimization: " << tic.TocMicroseconds()
+            << " ms, edge size: " << optimizer.edges().size() << std::endl;
+
+  g2o::VertexSE2* result = static_cast<g2o::VertexSE2*>(optimizer.vertex(0));
+  *x_new = result->estimate().toVector();
 }
 
 int IcpParams::GpcSolve(int total_num, const std::vector<GpcCorr>& c,
@@ -554,7 +612,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
   int all_is_okay = 1;
 
   int iteration;
-  for (iteration = 0; iteration < this->max_iterations; iteration++) {
+  for (iteration = 0; iteration < 1; iteration++) {
     /** Compute laser_sens's points in laser_ref's coordinates
         by roto-translating by x_old */
     laser_sens->ComputeWorldCoords(x_old);
@@ -828,6 +886,12 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       c[k].q[0] = laser_ref->points[j1].p[0];
       c[k].q[1] = laser_ref->points[j1].p[1];
 
+      Eigen::Vector3d point_1(laser_ref->points[j1].p[0],
+                              laser_ref->points[j1].p[1], 1);
+      Eigen::Vector3d point_2(laser_ref->points[j2].p[0],
+                              laser_ref->points[j2].p[1], 1);
+      c[k].line = point_1.cross(point_2);
+
       /** TODO: here we could use the estimated alpha */
       double diff[2];
       diff[0] = laser_ref->points[j1].p[0] - laser_ref->points[j2].p[0];
@@ -927,11 +991,24 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       1 / (std * std), 0, 0, 0, 1 / (std * std), 0, 0, 0, 0};
 
   // Core
+  Eigen::Vector3d test;
+  Eigen::Vector3d eigen_x_old(x_old[0], x_old[1], x_old[2]);
+
+  Alpha::TicToc tic;
+  SolveOptimization(c, eigen_x_old, &test);
+  std::cout << "SolveOptimization: " << tic.TocMicroseconds() << " ms"
+            << std::endl;
+  tic.Tic();
   int ok = GpcSolve(k, c, 0, inv_cov_x0, x_new);
-  if (!ok) {
-    LOG(ERROR) << "gpc_solve_valid failed";
-    return 0;
-  }
+  std::cout << " GpcSolve: " << tic.TocMicroseconds() << " ms" << std::endl;
+
+  x_new[0] = test[0];
+  x_new[1] = test[1];
+  x_new[2] = test[2];
+  // if (!ok) {
+  //   LOG(ERROR) << "gpc_solve_valid failed";
+  //   return 0;
+  // }
 
   double old_error = GpcTotalError(c, k, x_old);
   double new_error = GpcTotalError(c, k, x_new);

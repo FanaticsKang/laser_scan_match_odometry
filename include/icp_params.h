@@ -10,6 +10,7 @@ struct GpcCorr {
   double p[2];
   // reference point
   double q[2];
+  Eigen::Vector3d line;
 
   double C[2][2];
 
@@ -43,6 +44,11 @@ class IcpParams : public sm_params {
   int Compatible(const int i, const int j);
   int GpcSolve(int K, const std::vector<GpcCorr>& c, const double* x0,
                const double* cov_x0, double* x_out);
+
+  bool SolveOptimization(const std::vector<GpcCorr>& c,
+                         const Eigen::Vector3d& x_old,
+                         Eigen::Vector3d* const x_new);
+
   double GpcTotalError(const std::vector<GpcCorr>& co, int n, const double* x);
 
   // PLICP解析解，见PL-ICP原文附录

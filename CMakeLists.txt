@@ -34,6 +34,7 @@ find_package(PkgConfig)
 pkg_check_modules(csm REQUIRED csm)
 
 find_package(Glog REQUIRED)
+find_package(G2O REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -232,7 +233,10 @@ add_library(laser_scan_matcher_odometry src/laser_scan_matcher_odometry.cpp
                                         include/lidar_data.cc)
 
 #Note we don't link against pcl as we're using header-only parts of the library
-target_link_libraries(laser_scan_matcher_odometry ${catkin_LIBRARIES} ${cms_LIBRARIES} glog)
+target_link_libraries(laser_scan_matcher_odometry ${catkin_LIBRARIES} 
+                                                  ${cms_LIBRARIES} 
+                                                  glog
+                                                  g2o_types_slam2d)
 add_dependencies(laser_scan_matcher_odometry ${csm_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 
