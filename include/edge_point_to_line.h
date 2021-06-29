@@ -33,14 +33,10 @@ class EdgePointToLine : public g2o::BaseUnaryEdge<1, double, g2o::VertexSE2> {
     g2o::VertexSE2* vi = static_cast<g2o::VertexSE2*>(_vertices[0]);
     g2o::SE2 se2 = vi->estimate();
     Eigen::Matrix2d rotation = se2.rotation().toRotationMatrix();
-    // const double theta = se2.rotation().smallestPositiveAngle();
-    // std::cout << "theta: " << theta << ", cos: " << cos(theta)
-    //           << ", sin: " << sin(theta) << ", rotation: \n"
-    //           << rotation << std::endl;
     const double cos = rotation(0, 0);
-    const double sin = rotation(0, 1);
-    dp_dt(0, 2) = p_x * sin - p_y * cos;
-    dp_dt(1, 2) = p_x * cos + p_y * sin;
+    const double sin = rotation(1, 0);
+    dp_dt(0, 2) = -p_x * sin - p_y * cos;
+    dp_dt(1, 2) = p_x * cos - p_y * sin;
 
     Eigen::Vector3d jacobian = line_w_.transpose() * dp_dt;
     _jacobianOplusXi(0, 0) = jacobian(0);
