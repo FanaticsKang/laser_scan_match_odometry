@@ -30,8 +30,6 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(PCL REQUIRED QUIET)
 
 # Find csm project
-find_package(PkgConfig)
-pkg_check_modules(csm REQUIRED csm)
 
 find_package(Glog REQUIRED)
 find_package(G2O REQUIRED)
@@ -117,8 +115,7 @@ find_package(G2O REQUIRED)
 # )
 
 # Set include directories
-include_directories(include ${catkin_INCLUDE_DIRS} ${csm_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
-link_directories(${csm_LIBRARY_DIRS})
+include_directories(include ${catkin_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
 include_directories(include/laser_scan_matcher_odometry)
 
 ###################################
@@ -237,7 +234,7 @@ target_link_libraries(laser_scan_matcher_odometry ${catkin_LIBRARIES}
                                                   ${cms_LIBRARIES} 
                                                   glog
                                                   g2o_types_slam2d)
-add_dependencies(laser_scan_matcher_odometry ${csm_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(laser_scan_matcher_odometry  ${catkin_EXPORTED_TARGETS})
 
 
 #include_directories(include/laser_scan_matcher_odometry)
@@ -245,7 +242,7 @@ file(GLOB LSM_ODOMETRY_SRCS ${CMAKE_CURRENT_LIST_DIR}/src/*.cpp)
 
 # create node
 add_executable(laser_scan_matcher_odometry_node "src/laser_scan_matcher_odometry_node.cpp" ${LSM_ODOMETRY_SRCS})
-target_link_libraries(laser_scan_matcher_odometry_node ${catkin_LIBRARIES} ${csm_LIBRARIES}
+target_link_libraries(laser_scan_matcher_odometry_node ${catkin_LIBRARIES} 
                                                        laser_scan_matcher_odometry)
 #add_dependencies(laser_scan_matcher_odometry ${csm_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
