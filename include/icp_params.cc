@@ -63,7 +63,7 @@ int IcpParams::PolyGreatestRealRoot(int n, const double* a, double* root) {
   return 1;
 }
 
-bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connection,
+bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connections,
                                   const Eigen::Vector3d& x_old,
                                   Eigen::Vector3d* const x_new) {
   // TODO some error in my g2o lib
@@ -92,7 +92,7 @@ bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connection,
 
   const double th_huber = sqrt(3.841);
 
-  for (auto& one_connection : connection) {
+  for (auto& one_connection : connections) {
     Eigen::Vector2d point(one_connection.p[0], one_connection.p[1]);
     EdgePointToLine* edge = new EdgePointToLine(point, one_connection.line);
     edge->setVertex(
@@ -119,86 +119,67 @@ bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connection,
   return true;
 }
 
-int IcpParams::GpcSolve(int total_num, const std::vector<GpcCorr>& c,
-                        const double* x0, const double* cov_x0, double* x_out) {
-  (void)x0;
-  (void)cov_x0;
-  Eigen::Matrix4d bigM;
-  Eigen::Matrix<double, 4, 1> g;
-  Eigen::Matrix<double, 2, 4> bigM_k;
-  Eigen::Matrix<double, 4, 2> bigM_k_t;
-  Eigen::Matrix<double, 2, 2> C_k;
-  Eigen::Matrix<double, 2, 1> q_k;
-  Eigen::Matrix<double, 4, 1> temp41;
-  Eigen::Matrix<double, 2, 2> temp22;
-  Eigen::Matrix<double, 2, 2> temp22b;
-  Eigen::Matrix<double, 4, 2> temp42;
-  Eigen::Matrix<double, 4, 4> temp44;
-  Eigen::Matrix<double, 2, 1> temp21;
-  Eigen::Matrix<double, 2, 2> temp22c;
-  Eigen::Matrix<double, 1, 2> temp12;
+bool IcpParams::GpcSolve(const int total_size,
+                         const std::vector<GpcCorr>& connections,
+                         Eigen::Vector3d* const x_out) {
+  Eigen::Matrix4d d_bigM = Eigen::Matrix4d::Zero();
+  Eigen::Vector4d d_g = Eigen::Vector4d::Zero();
 
-  bigM.setZero();
-  g.setZero();
-  temp42.setZero();
-
-  double d_bigM[4][4] = {
-      {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}};
-  double d_g[4] = {0, 0, 0, 0};
-  for (int k = 0; k < total_num; k++) {
-    if (!c[k].valid) {
+  for (size_t k = 0; k < total_size; ++k) {
+    if (!connections[k].valid) {
       continue;
     }
 
-    double C00 = c[k].C[0][0];
-    double C01 = c[k].C[0][1];
-    double C10 = c[k].C[1][0];
-    double C11 = c[k].C[1][1];
+    const double C00 = connections[k].C[0][0];
+    const double C01 = connections[k].C[0][1];
+    const double C10 = connections[k].C[1][0];
+    const double C11 = connections[k].C[1][1];
 
     if (C01 != C10) {
-      fprintf(stderr, "k=%d; I expect C to be a symmetric matrix.\n", k);
-      return 0;
+      std::cout << "I expect C to be a symmetric matrix, k = " << k
+                << ",  C =\n"
+                << connections[k].C[0][0] << std::endl;
+      return false;
     }
 
     // 取出了参考点（q）, 当前点（p）和一个方向矩阵（C）
-    double qx = c[k].q[0];
-    double qy = c[k].q[1];
-    double px = c[k].p[0];
-    double py = c[k].p[1];
+    const double qx = connections[k].q[0];
+    const double qy = connections[k].q[1];
+    const double px = connections[k].p[0];
+    const double py = connections[k].p[1];
 
-    /* [ C00,  c01,  px C00 + c01 py , c01 px - py C00 ] */
-    d_bigM[0][0] += C00;
-    d_bigM[0][1] += C01;
-    d_bigM[0][2] += +px * C00 + py * C01;
-    d_bigM[0][3] += -py * C00 + px * C01;
+    //  [ C00,  c01,  px C00 + c01 py , c01 px - py C00 ]
+    d_bigM(0, 0) += C00;
+    d_bigM(0, 1) += C01;
+    d_bigM(0, 2) += +px * C00 + py * C01;
+    d_bigM(0, 3) += -py * C00 + px * C01;
 
-    /*  [ C10 ,  C11 , py C11 + px C10 , px C11 - py C10 ] */
-    d_bigM[1][0] += C10;
-    d_bigM[1][1] += C11;
-    d_bigM[1][2] += +px * C10 + py * C11;
-    d_bigM[1][3] += +px * C11 - py * C10;
+    // [ C10 ,  C11 , py C11 + px C10 , px C11 - py C10 ]
+    d_bigM(1, 0) += C10;
+    d_bigM(1, 1) += C11;
+    d_bigM(1, 2) += +px * C10 + py * C11;
+    d_bigM(1, 3) += +px * C11 - py * C10;
 
-    /*Col 1 = [ py C10 + px C00 ]
-     Col 2 = [ py C11 + c01 px ]
-     Col 3 = [ py (py C11 + px C10) + px (px C00 + c01 py) ]
-     Col 4 = [ py (px C11 - py C10) + px (c01 px - py C00) ]
-    */
-    d_bigM[2][0] += px * C00 + py * C10;
-    d_bigM[2][1] += px * C01 + py * C11;
-    d_bigM[2][2] +=
+    //  Col 1 = [ py C10 + px C00 ]
+    //  Col 2 = [ py C11 + c01 px ]
+    //  Col 3 = [ py (py C11 + px C10) + px (px C00 + c01 py) ]
+    //  Col 4 = [ py (px C11 - py C10) + px (c01 px - py C00) ]
+    d_bigM(2, 0) += px * C00 + py * C10;
+    d_bigM(2, 1) += px * C01 + py * C11;
+    d_bigM(2, 2) +=
         (px * px) * (+C00) + (px * py) * (+C10 + C01) + (py * py) * (+C11);
-    d_bigM[2][3] +=
+    d_bigM(2, 3) +=
         (px * px) * (+C01) + (px * py) * (-C00 + C11) + (py * py) * (-C10);
 
-    /*Col 1 = [ px C10 - py C00 ]
-      Col 2 = [ px C11 - c01 py ]
-     Col 3 = [ px (py C11 + px C10) - py (px C00 + c01 py) ]
-     Col 4 = [ px (px C11 - py C10) - py (c01 px - py C00) ]*/
-    d_bigM[3][0] += -py * C00 + px * C10;
-    d_bigM[3][1] += -py * C01 + px * C11;
-    d_bigM[3][2] +=
+    // Col 1 = [ px C10 - py C00 ]
+    // Col 2 = [ px C11 - c01 py ]
+    // Col 3 = [ px (py C11 + px C10) - py (px C00 + c01 py) ]
+    // Col 4 = [ px (px C11 - py C10) - py (c01 px - py C00) ]
+    d_bigM(3, 0) += -py * C00 + px * C10;
+    d_bigM(3, 1) += -py * C01 + px * C11;
+    d_bigM(3, 2) +=
         (px * px) * (+C10) + (px * py) * (-C00 + C11) + (py * py) * (-C01);
-    d_bigM[3][3] +=
+    d_bigM(3, 3) +=
         (px * px) * (+C11) + (px * py) * (-C10 - C01) + (py * py) * (+C00);
 
     d_g[0] += C00 * qx + C10 * qy;
@@ -207,72 +188,36 @@ int IcpParams::GpcSolve(int total_num, const std::vector<GpcCorr>& c,
     d_g[3] += qx * (C00 * (-py) + C01 * px) + qy * (C10 * (-py) + C11 * px);
   }
 
-  {
-    unsigned int a, b;
-    for (a = 0; a < 4; a++) {
-      g(a, 0) = -2 * d_g[a];
-    }
-    for (a = 0; a < 4; a++) {
-      for (b = 0; b < 4; b++) {
-        bigM(a, b) = 2 * d_bigM[a][b];
-      }
-    }
-  }
+  Eigen::Matrix4d bigM = 2 * d_bigM;
+  Eigen::Vector4d g = -2 * d_g;
 
-  Eigen::Matrix<double, 2, 2> mA = bigM.block<2, 2>(0, 0);
-  Eigen::Matrix<double, 2, 2> mB = bigM.block<2, 2>(0, 2);
-  Eigen::Matrix<double, 2, 2> mD = bigM.block<2, 2>(2, 2);
+  Eigen::Matrix2d mA = bigM.block<2, 2>(0, 0);
+  Eigen::Matrix2d mB = bigM.block<2, 2>(0, 2);
+  Eigen::Matrix2d mD = bigM.block<2, 2>(2, 2);
 
-  Eigen::Matrix<double, 2, 2> mS;
-  Eigen::Matrix<double, 2, 2> mSa;
+  Eigen::Matrix2d mS;
+  Eigen::Matrix2d mSa;
 
-  temp22b = mA.inverse();
-  /* temp22c = inv(A) * mB           */
-  temp22c = temp22b * mB;
-  /* temp22 = mB'               */
-  temp22 = mB.transpose();
-  temp22b = temp22 * temp22c;
-  temp22b *= -1.0;
-  mS = mD + temp22b;
+  mS = mD - mB.transpose() * mA.inverse() * mB;
 
   /* mSa = mS.inv * mS.det; */
   mSa = mS.inverse();
   mSa *= mS.determinant();
 
-  Eigen::Matrix<double, 2, 1> g1;
-  Eigen::Matrix<double, 2, 1> g2;
-  Eigen::Matrix<double, 1, 2> g1t;
-  Eigen::Matrix<double, 1, 2> g2t;
-  Eigen::Matrix<double, 2, 2> mAi;
-  Eigen::Matrix<double, 2, 2> mBt;
+  Eigen::Matrix<double, 2, 1> g1 = g.block<2, 1>(0, 0);
+  Eigen::Matrix<double, 2, 1> g2 = g.block<2, 1>(2, 0);
+  Eigen::Matrix<double, 1, 2> g1t = g1.transpose();
+  Eigen::Matrix<double, 1, 2> g2t = g2.transpose();
+  Eigen::Matrix2d mAi = mA.inverse();
 
-  g1(0, 0) = g(0, 0);
-  g1(1, 0) = g(1, 0);
-  g2(0, 0) = g(2, 0);
-  g2(1, 0) = g(3, 0);
-  g1t = g1.transpose();
-  g2t = g2.transpose();
-  mBt = mB.transpose();
-  mAi = mA.inverse();
+  Eigen::Matrix<double, 1, 2> m1t = g1t * mAi * mB;
+  Eigen::Matrix<double, 2, 1> m1 = m1t.transpose();
 
-  Eigen::Matrix<double, 1, 2> m1t;
-  Eigen::Matrix<double, 2, 1> m1;
-  Eigen::Matrix<double, 1, 2> m2t;
-  Eigen::Matrix<double, 2, 1> m2;
-  Eigen::Matrix<double, 1, 2> m3t;
-  Eigen::Matrix<double, 2, 1> m3;
+  Eigen::Matrix<double, 1, 2> m2t = m1t * mSa;
+  Eigen::Matrix<double, 2, 1> m2 = m2t.transpose();
 
-  /* m1t = g1t*mAi*mB */
-  temp12 = g1t * mAi;
-  m1t = temp12 * mB;
-
-  m1 = m1t.transpose();
-  /*     m2t = m1t*mSa    */
-  m2t = m1t * mSa;
-  m2 = m2t.transpose();
-  /* m3t = g2t*mSa     */
-  m3t = g2t * mSa;
-  m3 = m3t.transpose();
+  Eigen::Matrix<double, 1, 2> m3t = g2t * mSa;
+  Eigen::Matrix<double, 2, 1> m3 = m3t.transpose();
 
   double p[3] = {m2t.dot(m2) - 2 * m2t.dot(m3) + m3t.dot(m3),
                  4 * m2t.dot(m1) - 8 * m2t.dot(g2) + 4 * g2t.dot(m3),
@@ -296,23 +241,20 @@ int IcpParams::GpcSolve(int total_num, const std::vector<GpcCorr>& c,
   W *= (2 * lambda);
 
   bigM += W;
-  temp44 = bigM.inverse();
-  x = temp44 * g;
+  x = bigM.inverse() * g;
   x *= -1.0;
 
-  x_out[0] = x(0, 0);
-  x_out[1] = x(1, 0);
-  x_out[2] = atan2(x(3, 0), x(2, 0));
+  (*x_out) << x(0, 0), x(1, 0), atan2(x(3, 0), x(2, 0));
 
-  return 1;
+  return true;
 }
 
 double IcpParams::GpcError(const struct GpcCorr* co, const double* x) {
-  double c = cos(x[2]);
+  double connections = cos(x[2]);
   double s = sin(x[2]);
   double e[2];
-  e[0] = c * (co->p[0]) - s * (co->p[1]) + x[0] - co->q[0];
-  e[1] = s * (co->p[0]) + c * (co->p[1]) + x[1] - co->q[1];
+  e[0] = connections * (co->p[0]) - s * (co->p[1]) + x[0] - co->q[0];
+  e[1] = s * (co->p[0]) + connections * (co->p[1]) + x[1] - co->q[1];
   double this_error = e[0] * e[0] * co->C[0][0] +
                       2 * e[0] * e[1] * co->C[0][1] + e[1] * e[1] * co->C[1][1];
 
@@ -616,7 +558,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
   int all_is_okay = 1;
 
   int iteration;
-  for (iteration = 0; iteration < 1; iteration++) {
+  for (iteration = 0; iteration < this->max_iterations; iteration++) {
     /** Compute laser_sens's points in laser_ref's coordinates
         by roto-translating by x_old */
     laser_sens->ComputeWorldCoords(x_old);
@@ -865,9 +807,9 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
   LDP laser_ref = this->laser_ref;
   LDP laser_sens = this->laser_sens;
 
-  // struct GpcCorr c[laser_sens->nrays];
+  // struct GpcCorr connections[laser_sens->nrays];
   struct GpcCorr dummy;
-  std::vector<GpcCorr> c(laser_sens->nrays, dummy);
+  std::vector<GpcCorr> connections(laser_sens->nrays, dummy);
 
   int k = 0;
   for (int i = 0; i < laser_sens->nrays; i++) {
@@ -882,19 +824,19 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
     int j1 = laser_sens->corr[i].j1;
     int j2 = laser_sens->corr[i].j2;
 
-    c[k].valid = 1;
+    connections[k].valid = 1;
 
     if (laser_sens->corr[i].type == correspondence::corr_pl) {
-      c[k].p[0] = laser_sens->points[i].p[0];
-      c[k].p[1] = laser_sens->points[i].p[1];
-      c[k].q[0] = laser_ref->points[j1].p[0];
-      c[k].q[1] = laser_ref->points[j1].p[1];
+      connections[k].p[0] = laser_sens->points[i].p[0];
+      connections[k].p[1] = laser_sens->points[i].p[1];
+      connections[k].q[0] = laser_ref->points[j1].p[0];
+      connections[k].q[1] = laser_ref->points[j1].p[1];
 
       Eigen::Vector3d point_1(laser_ref->points[j1].p[0],
                               laser_ref->points[j1].p[1], 1);
       Eigen::Vector3d point_2(laser_ref->points[j2].p[0],
                               laser_ref->points[j2].p[1], 1);
-      c[k].line = point_1.cross(point_2);
+      connections[k].line = point_1.cross(point_2);
 
       /** TODO: here we could use the estimated alpha */
       double diff[2];
@@ -910,23 +852,23 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       double sin_alpha = normal[1];
 
       // 2D方向余旋矩阵
-      c[k].C[0][0] = cos_alpha * cos_alpha;
-      c[k].C[1][0] = c[k].C[0][1] = cos_alpha * sin_alpha;
-      c[k].C[1][1] = sin_alpha * sin_alpha;
+      connections[k].C[0][0] = cos_alpha * cos_alpha;
+      connections[k].C[1][0] = connections[k].C[0][1] = cos_alpha * sin_alpha;
+      connections[k].C[1][1] = sin_alpha * sin_alpha;
 
     } else {
-      c[k].p[0] = laser_sens->points[i].p[0];
-      c[k].p[1] = laser_sens->points[i].p[1];
+      connections[k].p[0] = laser_sens->points[i].p[0];
+      connections[k].p[1] = laser_sens->points[i].p[1];
 
-      MathUtils::ProjectionOnSegment(laser_ref->points[j1].p,
-                                     laser_ref->points[j2].p,
-                                     laser_sens->points_w[i].p, c[k].q);
+      MathUtils::ProjectionOnSegment(
+          laser_ref->points[j1].p, laser_ref->points[j2].p,
+          laser_sens->points_w[i].p, connections[k].q);
 
       /* Identity matrix */
-      c[k].C[0][0] = 1;
-      c[k].C[1][0] = 0;
-      c[k].C[0][1] = 0;
-      c[k].C[1][1] = 1;
+      connections[k].C[0][0] = 1;
+      connections[k].C[1][0] = 0;
+      connections[k].C[0][1] = 0;
+      connections[k].C[1][1] = 1;
     }
 
     double factor = 1;
@@ -981,10 +923,10 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       }
     }
 
-    c[k].C[0][0] *= factor;
-    c[k].C[1][0] *= factor;
-    c[k].C[0][1] *= factor;
-    c[k].C[1][1] *= factor;
+    connections[k].C[0][0] *= factor;
+    connections[k].C[1][0] *= factor;
+    connections[k].C[0][1] *= factor;
+    connections[k].C[1][1] *= factor;
 
     k++;
   }
@@ -999,23 +941,23 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
   Eigen::Vector3d eigen_x_old(x_old[0], x_old[1], x_old[2]);
 
   Alpha::TicToc tic;
-  SolveOptimization(c, eigen_x_old, &test);
-  std::cout << "SolveOptimization: " << tic.TocMicroseconds() << " ms"
-            << std::endl;
+  // SolveOptimization(connections, eigen_x_old, &test);
+  // std::cout << "SolveOptimization: " << tic.TocMicroseconds() << " ms"
+  //           << std::endl;
   tic.Tic();
-  int ok = GpcSolve(k, c, 0, inv_cov_x0, x_new);
+  int ok = GpcSolve(k, connections, &test);
   std::cout << " GpcSolve: " << tic.TocMicroseconds() << " ms" << std::endl;
 
   x_new[0] = test[0];
   x_new[1] = test[1];
   x_new[2] = test[2];
-  // if (!ok) {
-  //   LOG(ERROR) << "gpc_solve_valid failed";
-  //   return 0;
-  // }
+  if (!ok) {
+    LOG(ERROR) << "gpc_solve_valid failed";
+    return 0;
+  }
 
-  double old_error = GpcTotalError(c, k, x_old);
-  double new_error = GpcTotalError(c, k, x_new);
+  double old_error = GpcTotalError(connections, k, x_old);
+  double new_error = GpcTotalError(connections, k, x_new);
 
   // sm_debug("\tcompute_next_estimate: old error: %f  x_old= %s \n",
   // old_error,

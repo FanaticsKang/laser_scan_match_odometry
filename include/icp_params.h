@@ -42,8 +42,7 @@ class IcpParams : public sm_params {
 
   int TerminationCriterion(const double* delta);
   int Compatible(const int i, const int j);
-  int GpcSolve(int K, const std::vector<GpcCorr>& c, const double* x0,
-               const double* cov_x0, double* x_out);
+  bool GpcSolve(const int total_size, const std::vector<GpcCorr>& c, Eigen::Vector3d* const x_new);
 
   bool SolveOptimization(const std::vector<GpcCorr>& c,
                          const Eigen::Vector3d& x_old,
