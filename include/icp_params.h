@@ -22,8 +22,9 @@ class IcpParams : public sm_params {
   IcpParams(const sm_params& base);
   void PLIcp(IcpResult* const result);
   // 循环计算ICP, q0为初始位置(x,y,theta)；
-  int IcpLoop(double* const q0, double* const x_new, double* const total_error,
-              int* const valid, int* const iterations);
+  int IcpLoop(const Eigen::Vector3d& x_old, Eigen::Vector3d* const x_new,
+              double* const total_error, int* const valid,
+              int* const iterations);
 
   // laser_ref 和 laser_sens 之间的数据关联
   void FindCorrespondences();
@@ -38,20 +39,23 @@ class IcpParams : public sm_params {
   void SwapDouble(double* a, double* b);
   void QuickSort(std::vector<double>& array, int begin, int end);
 
-  int ComputeNextEstimate(const double x_old[3], double x_new[3]);
+  int ComputeNextEstimate(const Eigen::Vector3d x_old,
+                          Eigen::Vector3d* const x_new);
 
-  int TerminationCriterion(const double* delta);
+  int TerminationCriterion(const Eigen::Vector3d& delta);
   int Compatible(const int i, const int j);
-  bool GpcSolve(const int total_size, const std::vector<GpcCorr>& c, Eigen::Vector3d* const x_new);
+  bool GpcSolve(const int total_size, const std::vector<GpcCorr>& c,
+                Eigen::Vector3d* const x_new);
 
   bool SolveOptimization(const std::vector<GpcCorr>& c,
                          const Eigen::Vector3d& x_old,
                          Eigen::Vector3d* const x_new);
 
-  double GpcTotalError(const std::vector<GpcCorr>& co, int n, const double* x);
+  double GpcTotalError(const std::vector<GpcCorr>& co, const int n,
+                       const Eigen::Vector3d& x);
 
   // PLICP解析解，见PL-ICP原文附录
-  double GpcError(const struct GpcCorr* co, const double* x);
+  double GpcError(const GpcCorr& co, const Eigen::Vector3d& x);
 
   int PolyGreatestRealRoot(int n, const double* a, double* root);
 };

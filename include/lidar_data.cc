@@ -116,10 +116,7 @@ void LidarData::SetCorrespondence(int i, int j1, int j2) {
 
 // TODO 改为Eigen
 
-void LidarData::ComputeWorldCoords(Eigen::Vector3d* const pose) {
-  ComputeWorldCoords(pose->data());
-}
-void LidarData::ComputeWorldCoords(const double* pose) {
+void LidarData::ComputeWorldCoords(const Eigen::Vector3d& pose) {
   const double pose_x = pose[0];
   const double pose_y = pose[1];
   const double pose_theta = pose[2];

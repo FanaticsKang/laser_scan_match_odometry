@@ -15,8 +15,6 @@
 
 IcpParams::IcpParams(const sm_params& base) : sm_params(base) {}
 
-double Norm2D(const double p[2]) { return sqrt(p[0] * p[0] + p[1] * p[1]); }
-
 int IcpParams::PolyGreatestRealRoot(int n, const double* a, double* root) {
   Eigen::VectorXd poly_coeffs(n);
   for (int i = 0; i < n; i++) {
@@ -249,38 +247,35 @@ bool IcpParams::GpcSolve(const int total_size,
   return true;
 }
 
-double IcpParams::GpcError(const struct GpcCorr* co, const double* x) {
+double IcpParams::GpcError(const GpcCorr& co, const Eigen::Vector3d& x) {
   double connections = cos(x[2]);
   double s = sin(x[2]);
   double e[2];
-  e[0] = connections * (co->p[0]) - s * (co->p[1]) + x[0] - co->q[0];
-  e[1] = s * (co->p[0]) + connections * (co->p[1]) + x[1] - co->q[1];
-  double this_error = e[0] * e[0] * co->C[0][0] +
-                      2 * e[0] * e[1] * co->C[0][1] + e[1] * e[1] * co->C[1][1];
+  e[0] = connections * (co.p[0]) - s * (co.p[1]) + x[0] - co.q[0];
+  e[1] = s * (co.p[0]) + connections * (co.p[1]) + x[1] - co.q[1];
+  double this_error = e[0] * e[0] * co.C[0][0] + 2 * e[0] * e[1] * co.C[0][1] +
+                      e[1] * e[1] * co.C[1][1];
 
   if (0) /* due to limited numerical precision, error might be negative */
     if (this_error < 0) {
       fprintf(
           stderr,
           "Something fishy: error = %lf e = [%lf %lf]  C = [%lf,%lf;%lf,%lf]\n",
-          this_error, e[0], e[1], co->C[0][0], co->C[0][1], co->C[1][0],
-          co->C[1][1]);
+          this_error, e[0], e[1], co.C[0][0], co.C[0][1], co.C[1][0],
+          co.C[1][1]);
     }
   return this_error;
 }
 
-double IcpParams::GpcTotalError(const std::vector<GpcCorr>& co, int n,
-                                const double* x) {
-  int i;
+double IcpParams::GpcTotalError(const std::vector<GpcCorr>& co, const int n,
+                                const Eigen::Vector3d& x) {
   double error = 0;
-  for (i = 0; i < n; i++) {
-    if (!co[i].valid) continue;
-    error += GpcError(&(co.at(i)), x);
-  }
-  if (0) /* due to limited numerical precision, error might be negative */
-    if (error < 0) {
-      fprintf(stderr, "Something fishy!\n");
+  for (int i = 0; i < n; i++) {
+    if (!co[i].valid) {
+      continue;
     }
+    error += GpcError(co[i], x);
+  }
   return error;
 }
 
@@ -529,27 +524,26 @@ double IcpParams::KillOutliersTrim() {
   return total_error;
 }
 
-int IcpParams::TerminationCriterion(const double* delta) {
-  double a = Norm2D(delta);
+int IcpParams::TerminationCriterion(const Eigen::Vector3d& delta) {
+  double a = delta.squaredNorm();
   double b = fabs(delta[2]);
   return (a < this->epsilon_xy) && (b < this->epsilon_theta);
 }
 
-int IcpParams::IcpLoop(double* const q0, double* const x_new,
+int IcpParams::IcpLoop(const Eigen::Vector3d& q0, Eigen::Vector3d* const x_new,
                        double* const total_error, int* const valid,
                        int* const iterations) {
-  if (MathUtils::AnyNan(q0, 3)) {
-    // LOG(ERROR) << "icp_loop: Initial pose contains nan: " <<
-    // friendly_pose(q0);
+  if (q0.hasNaN()) {
+    LOG(ERROR) << "icp_loop: Initial pose contains nan: " << q0;
     return 0;
   }
 
   // 新一帧的位置
   LidarData* laser_sens = reinterpret_cast<LidarData*>(this->laser_sens);
-  double x_old[3], delta[3], delta_old[3] = {0, 0, 0};
 
-  // x_old <- q0, q0是迭代的起点
-  MathUtils::Copy(q0, 3, x_old);
+  Eigen::Vector3d x_old, delta, delta_old;
+  x_old = q0;
+  delta_old.setZero();
 
   std::vector<unsigned int> hashes(this->max_iterations, 0);
 
@@ -620,7 +614,7 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
       all_is_okay = 0;
       break;
     }
-    MathUtils::PoseDiff(x_new, x_old, delta);
+    MathUtils::PoseDiff(x_new->data(), x_old.data(), delta.data());
 
     // {
     //   sm_debug(
@@ -665,8 +659,8 @@ int IcpParams::IcpLoop(double* const q0, double* const x_new,
       break;
     }
 
-    MathUtils::Copy(x_new, 3, x_old);
-    MathUtils::Copy(delta, 3, delta_old);
+    x_old = *x_new;
+    delta_old = delta;
 
     // egsl_pop_named("icp_loop iteration");
   }
@@ -715,7 +709,7 @@ void IcpParams::PLIcp(IcpResult* const result) {
   int iterations;
   int nvalid;
 
-  if (!IcpLoop(x_old.data(), x_new.data(), &error, &nvalid, &iterations)) {
+  if (!IcpLoop(x_old, &x_new, &error, &nvalid, &iterations)) {
     // sm_error("icp: ICP failed for some reason. \n");
     result->valid_ = 0;
     result->iterations_ = iterations;
@@ -751,7 +745,7 @@ void IcpParams::PLIcp(IcpResult* const result) {
         double my_error;
         int my_valid;
         int my_iterations;
-        if (!my_params.IcpLoop(start.data(), x_a.data(), &my_error, &my_valid,
+        if (!my_params.IcpLoop(start, &x_a, &my_error, &my_valid,
                                &my_iterations)) {
           // sm_error("Error during restart #%d/%d. \n", a, 6);
           break;
@@ -775,7 +769,7 @@ void IcpParams::PLIcp(IcpResult* const result) {
     // sm_debug("icp: final x =  %s  \n", gsl_friendly_pose(best_x));
 
     if (restarted) {  // recompute correspondences in case of restarts
-      laser_sens->ComputeWorldCoords(&(result->x_));
+      laser_sens->ComputeWorldCoords(result->x_);
       // if (this->use_corr_tricks)
       //   find_correspondences_tricks(this);
       // else
@@ -803,7 +797,8 @@ void IcpParams::PLIcp(IcpResult* const result) {
   }
 }
 
-int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
+int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
+                                   Eigen::Vector3d* const x_new) {
   LDP laser_ref = this->laser_ref;
   LDP laser_sens = this->laser_sens;
 
@@ -937,27 +932,21 @@ int IcpParams::ComputeNextEstimate(const double x_old[3], double x_new[3]) {
       1 / (std * std), 0, 0, 0, 1 / (std * std), 0, 0, 0, 0};
 
   // Core
-  Eigen::Vector3d test;
-  Eigen::Vector3d eigen_x_old(x_old[0], x_old[1], x_old[2]);
-
   Alpha::TicToc tic;
   // SolveOptimization(connections, eigen_x_old, &test);
   // std::cout << "SolveOptimization: " << tic.TocMicroseconds() << " ms"
   //           << std::endl;
   tic.Tic();
-  int ok = GpcSolve(k, connections, &test);
+  int ok = GpcSolve(k, connections, x_new);
   std::cout << " GpcSolve: " << tic.TocMicroseconds() << " ms" << std::endl;
 
-  x_new[0] = test[0];
-  x_new[1] = test[1];
-  x_new[2] = test[2];
   if (!ok) {
     LOG(ERROR) << "gpc_solve_valid failed";
     return 0;
   }
 
   double old_error = GpcTotalError(connections, k, x_old);
-  double new_error = GpcTotalError(connections, k, x_new);
+  double new_error = GpcTotalError(connections, k, *x_new);
 
   // sm_debug("\tcompute_next_estimate: old error: %f  x_old= %s \n",
   // old_error,

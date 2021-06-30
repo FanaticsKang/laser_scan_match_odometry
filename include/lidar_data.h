@@ -9,8 +9,7 @@ class LidarData : public laser_data {
   void InvalidIfOutside(const double min_reading, const double max_reading);
   bool ValidRay(const int i) const;
   void ComputeCartesian();
-  void ComputeWorldCoords(const double* pose);
-  void ComputeWorldCoords(Eigen::Vector3d* const pose);
+  void ComputeWorldCoords(const Eigen::Vector3d& pose);
 
   void SetNullCorrespondence(const int i);
 
