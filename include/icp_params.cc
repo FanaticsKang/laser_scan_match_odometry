@@ -66,7 +66,10 @@ int IcpParams::PolyGreatestRealRoot(int n, const double* a, double* root) {
 bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connection,
                                   const Eigen::Vector3d& x_old,
                                   Eigen::Vector3d* const x_new) {
-  g2o::SparseOptimizer optimizer;
+  // TODO some error in my g2o lib
+  static g2o::SparseOptimizer optimizer;
+  optimizer.edges().clear();
+  optimizer.vertices().clear();
 
   typedef g2o::BlockSolver<g2o::BlockSolverTraits<3, 1> > BlockSolver_3_1;
   // 注意
@@ -113,6 +116,7 @@ bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connection,
 
   g2o::VertexSE2* result = static_cast<g2o::VertexSE2*>(optimizer.vertex(0));
   *x_new = result->estimate().toVector();
+  return true;
 }
 
 int IcpParams::GpcSolve(int total_num, const std::vector<GpcCorr>& c,
