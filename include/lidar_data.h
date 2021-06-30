@@ -46,6 +46,7 @@ class LidarData {
   int NextValidDown(int i) { return NextValid(i, -1); }
 
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   int nrays;
   double min_theta;
   double max_theta;

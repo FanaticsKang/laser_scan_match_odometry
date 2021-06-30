@@ -10,8 +10,8 @@ class EdgePointToLine : public g2o::BaseUnaryEdge<1, double, g2o::VertexSE2> {
   EdgePointToLine(const Eigen::Vector2d& point, const Eigen::Vector3d& line)
       : point_r_(point), line_w_(line) {}
 
-  bool read(std::istream& is){};
-  bool write(std::ostream& os) const {};
+  bool read(std::istream& is) { return true; };
+  bool write(std::ostream& os) const { return true; };
 
   void computeError() {
     const g2o::VertexSE2* v0 = static_cast<const g2o::VertexSE2*>(_vertices[0]);
@@ -63,8 +63,6 @@ class EdgePointToLine : public g2o::BaseUnaryEdge<1, double, g2o::VertexSE2> {
 
     g2o::VertexSE2* v0 = static_cast<g2o::VertexSE2*>(_vertices[0]);
     Eigen::Vector3d pose = v0->estimate().toVector();
-    const double tx = pose[0];
-    const double ty = pose[1];
     const double theta = pose[2];
     const double cos = std::cos(theta);
     const double sin = std::sin(theta);

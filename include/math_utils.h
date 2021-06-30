@@ -6,6 +6,7 @@
 
 class MathUtils {
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   static double Deg2Rad(double deg) { return deg * (M_PI / 180); }
   static double Rad2Deg(double rad) { return rad * (180 / M_PI); }
   static double AngleDiff(const double a, const double b) {

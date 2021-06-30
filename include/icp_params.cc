@@ -88,7 +88,7 @@ bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connections,
   vertex_se2->setFixed(false);
   optimizer.addVertex(vertex_se2);
 
-  const double th_huber = sqrt(3.841);
+  // const double th_huber = sqrt(3.841);
 
   for (auto& one_connection : connections) {
     Eigen::Vector2d point(one_connection.p[0], one_connection.p[1]);
@@ -123,7 +123,7 @@ bool IcpParams::GpcSolve(const int total_size,
   Eigen::Matrix4d d_bigM = Eigen::Matrix4d::Zero();
   Eigen::Vector4d d_g = Eigen::Vector4d::Zero();
 
-  for (size_t k = 0; k < total_size; ++k) {
+  for (int k = 0; k < total_size; ++k) {
     if (!connections[k].valid) {
       continue;
     }
@@ -773,7 +773,7 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
   LidarData* laser_sens = this->laser_sens;
 
   // struct GpcCorr connections[laser_sens->nrays];
-  struct GpcCorr dummy;
+  GpcCorr dummy;
   std::vector<GpcCorr> connections(laser_sens->nrays, dummy);
 
   int k = 0;
@@ -839,16 +839,11 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
     k++;
   }
 
-  /* TODO: use prior for odometry */
-  double std = 0.11;
-  const double inv_cov_x0[9] = {
-      1 / (std * std), 0, 0, 0, 1 / (std * std), 0, 0, 0, 0};
-
   // Core
   Alpha::TicToc tic;
-  // SolveOptimization(connections, x_old, x_new);
-  // std::cout << "SolveOptimization: " << tic.TocMicroseconds() << " ms"
-  //           << std::endl;
+  SolveOptimization(connections, x_old, x_new);
+  std::cout << "SolveOptimization: " << tic.TocMicroseconds() << " ms"
+            << std::endl;
   tic.Tic();
   int ok = GpcSolve(k, connections, x_new);
   std::cout << " GpcSolve: " << tic.TocMicroseconds() << " ms" << std::endl;
@@ -858,8 +853,8 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
     return 0;
   }
 
-  double old_error = GpcTotalError(connections, k, x_old);
-  double new_error = GpcTotalError(connections, k, *x_new);
+  // double old_error = GpcTotalError(connections, k, x_old);
+  // double new_error = GpcTotalError(connections, k, *x_new);
 
   return 1;
 }

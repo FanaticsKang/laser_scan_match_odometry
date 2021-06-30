@@ -30,7 +30,7 @@ void LidarData::Initialization(const size_t point_size) {
   corr.resize(point_size, tmp_corr);
 
   Point2d tmp_point;
-  tmp_point.p[0] = tmp_point.p[0] = tmp_point.rho = tmp_point.phi =
+  tmp_point.p[0] = tmp_point.p[1] = tmp_point.rho = tmp_point.phi =
       std::numeric_limits<double>::quiet_NaN();
 
   points.resize(point_size, tmp_point);
@@ -66,7 +66,6 @@ void LidarData::InvalidIfOutside(const double min_reading,
 
 unsigned int LidarData::CorrHash() {
   unsigned int hash = 0;
-  unsigned int i = 0;
 
   for (unsigned int i = 0; i < (unsigned)this->nrays; i++) {
     int str =

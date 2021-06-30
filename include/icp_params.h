@@ -5,7 +5,8 @@
 #include "lidar_data.h"
 #include "math_utils.h"
 
-struct GpcCorr {
+class GpcCorr {
+ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   // current point
   double p[2];
@@ -15,7 +16,7 @@ struct GpcCorr {
 
   double C[2][2];
 
-  int valid;
+  int valid = 0;
 };
 
 class IcpParams {
@@ -61,6 +62,7 @@ class IcpParams {
   int PolyGreatestRealRoot(int n, const double* a, double* root);
 
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   /** First scan ("ref"erence scan) */
   LidarData* laser_ref;
   /** Second scan ("sens"or scan) */
