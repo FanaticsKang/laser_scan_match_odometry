@@ -616,22 +616,8 @@ int IcpParams::IcpLoop(const Eigen::Vector3d& q0, Eigen::Vector3d* const x_new,
     }
     MathUtils::PoseDiff(x_new->data(), x_old.data(), delta.data());
 
-    // {
-    //   sm_debug(
-    //       "  icp_loop: killing. laser_sens has %d/%d rays valid,  %d corr "
-    //       "found -> %d after double cut -> %d after adaptive cut \n",
-    //       count_equal(laser_sens->valid, laser_sens->nrays, 1),
-    //       laser_sens->nrays, num_corr, num_corr2, num_corr_after);
-    // }
     /** Checks for oscillations */
     hashes[iteration] = laser_sens->CorrHash();
-
-    // {
-    //   sm_debug("  icp_loop: it. %d  hash=%d nvalid=%d mean error = %f, x_new=
-    //            % s\n
-    //            ", iteration, hashes[iteration], *valid, *total_error /
-    //            *valid, friendly_pose(x_new));
-    // }
 
     /** PLICP terminates in a finite number of steps! */
     if (this->use_point_to_line_distance) {
@@ -682,26 +668,11 @@ void IcpParams::PLIcp(IcpResult* const result) {
   laser_ref->InvalidIfOutside(this->min_reading, this->max_reading);
   laser_sens->InvalidIfOutside(this->min_reading, this->max_reading);
 
-  // TODO
-  // if(this->use_corr_tricks ||this->debug_verify_tricks)
-  // 	ld_create_jump_tables(laser_ref);
-
   // Origin laser is range and bearing, here compute as Cartesian.
   laser_ref->ComputeCartesian();
   laser_sens->ComputeCartesian();
 
-  // TODO
-  // if (this->do_alpha_test) {
-  //   ld_simple_clustering(laser_ref,this->clustering_threshold);
-  //   ld_compute_orientation(laser_ref,this->orientation_neighbourhood,
-  // this->sigma);
-  //   ld_simple_clustering(laser_sens,this->clustering_threshold);
-  //   ld_compute_orientation(laser_sens,this->orientation_neighbourhood,
-  // this->sigma);
-  // }
-
   Eigen::Vector3d x_new;
-  // 	gsl_vector * x_old = vector_from_array(3,this->first_guess);
   Eigen::Vector3d x_old(this->first_guess[0], this->first_guess[1],
                         this->first_guess[2]);
 
@@ -831,8 +802,8 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
       Eigen::Vector3d point_2(laser_ref->points[j2].p[0],
                               laser_ref->points[j2].p[1], 1);
       connections[k].line = point_1.cross(point_2);
+      connections[k].line.normalize();
 
-      /** TODO: here we could use the estimated alpha */
       double diff[2];
       diff[0] = laser_ref->points[j1].p[0] - laser_ref->points[j2].p[0];
       diff[1] = laser_ref->points[j1].p[1] - laser_ref->points[j2].p[1];
@@ -865,63 +836,6 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
       connections[k].C[1][1] = 1;
     }
 
-    double factor = 1;
-
-    /* Scale the correspondence weight by a factor concerning the
-       information in this reading. */
-    // not work
-    if (this->use_ml_weights) {
-      int have_alpha = 0;
-      double alpha = 0;
-      if (!isnan(laser_ref->true_alpha[j1])) {
-        alpha = laser_ref->true_alpha[j1];
-        have_alpha = 1;
-      } else if (laser_ref->alpha_valid[j1]) {
-        alpha = laser_ref->alpha[j1];
-        have_alpha = 1;
-      } else {
-        have_alpha = 0;
-      }
-
-      if (have_alpha) {
-        double pose_theta = x_old[2];
-        /** Incidence of the ray
-                Note that alpha is relative to the first scan (not the world)
-                and that pose_theta is the angle of the second scan with
-                respect to the first, hence it's ok. */
-        double beta = alpha - (pose_theta + laser_sens->theta[i]);
-        factor = 1 / pow(cos(beta), 2);
-      } else {
-        static int warned_before = 0;
-        if (!warned_before) {
-          LOG(WARNING)
-              << "Param use_ml_weights was active, but not valid alpha[] or "
-                 "true_alpha[]. Perhaps, if this is a single ray not having "
-                 "alpha, you should mark it as inactive.";
-          warned_before = 1;
-        }
-      }
-    }
-
-    /* Weight the points by the sigma in laser_sens */
-    // not work
-    if (this->use_sigma_weights) {
-      if (!isnan(laser_sens->readings_sigma[i])) {
-        factor *= 1 / pow(laser_sens->readings_sigma[i], 2);
-      } else {
-        static int warned_before = 0;
-        if (!warned_before) {
-          LOG(WARNING) << "Param use_sigma_weights was active, but the field "
-                          "readings_sigma[] was not filled in.";
-        }
-      }
-    }
-
-    connections[k].C[0][0] *= factor;
-    connections[k].C[1][0] *= factor;
-    connections[k].C[0][1] *= factor;
-    connections[k].C[1][1] *= factor;
-
     k++;
   }
 
@@ -932,7 +846,7 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
 
   // Core
   Alpha::TicToc tic;
-  // SolveOptimization(connections, eigen_x_old, &test);
+  // SolveOptimization(connections, x_old, x_new);
   // std::cout << "SolveOptimization: " << tic.TocMicroseconds() << " ms"
   //           << std::endl;
   tic.Tic();
@@ -946,24 +860,6 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
 
   double old_error = GpcTotalError(connections, k, x_old);
   double new_error = GpcTotalError(connections, k, *x_new);
-
-  // sm_debug("\tcompute_next_estimate: old error: %f  x_old= %s \n",
-  // old_error,
-  //          friendly_pose(x_old));
-  // sm_debug("\tcompute_next_estimate: new error: %f  x_new= %s \n",
-  // new_error,
-  //          friendly_pose(x_new));
-  // sm_debug("\tcompute_next_estimate: new error - old_error: %g \n",
-  //          new_error - old_error);
-
-  double epsilon = 0.000001;
-  if (new_error > old_error + epsilon) {
-    // sm_error(
-    //     "\tcompute_next_estimate: something's fishy here! Old error: %lf
-    //     new " "error: %lf  x_old %lf %lf %lf x_new %lf %lf %lf\n",
-    //     old_error, new_error, x_old[0], x_old[1], x_old[2], x_new[0],
-    //     x_new[1], x_new[2]);
-  }
 
   return 1;
 }

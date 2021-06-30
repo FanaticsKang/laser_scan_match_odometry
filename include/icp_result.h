@@ -7,6 +7,7 @@ class IcpResult {
   IcpResult() = default;
 
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   /** 1 if the result is valid */
   int valid_;
 

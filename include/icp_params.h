@@ -6,6 +6,7 @@
 #include "math_utils.h"
 
 struct GpcCorr {
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   // current point
   double p[2];
   // reference point
@@ -174,5 +175,4 @@ class IcpParams {
 
   /** mark as invalid ( = don't use ) rays outside of this interval */
   double min_reading, max_reading;
-
 };
