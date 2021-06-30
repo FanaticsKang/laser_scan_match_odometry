@@ -13,7 +13,7 @@
 #include "icp_params.h"
 #include "math_utils.h"
 
-IcpParams::IcpParams(const sm_params& base) : sm_params(base) {}
+IcpParams::IcpParams() {}
 
 int IcpParams::PolyGreatestRealRoot(int n, const double* a, double* root) {
   Eigen::VectorXd poly_coeffs(n);
@@ -305,8 +305,8 @@ int IcpParams::Compatible(int i, int j) {
 }
 
 void IcpParams::FindCorrespondences() {
-  // const LDP laser_ref  = this->laser_ref;
-  // const LDP laser_sens = this->laser_sens;
+  // const LidarData* laser_ref  = this->laser_ref;
+  // const LidarData* laser_sens = this->laser_sens;
   LidarData* laser_ref = reinterpret_cast<LidarData*>(this->laser_ref);
   LidarData* laser_sens = reinterpret_cast<LidarData*>(this->laser_sens);
 
@@ -379,16 +379,16 @@ void IcpParams::FindCorrespondences() {
     laser_sens->corr[i].dist2_j1 = best_dist;
     // use_point_to_line_distance default TRUE.
     laser_sens->corr[i].type = this->use_point_to_line_distance
-                                   ? correspondence::corr_pl
-                                   : correspondence::corr_pp;
+                                   ? Correspondence::corr_pl
+                                   : Correspondence::corr_pp;
   }
 }
 
 void IcpParams::KillOutliersDouble() {
   double threshold = 3; /* TODO: add as configurable */
 
-  LDP laser_ref = this->laser_ref;
-  LDP laser_sens = this->laser_sens;
+  LidarData* laser_ref = this->laser_ref;
+  LidarData* laser_sens = this->laser_sens;
 
   std::vector<double> dist2_i(laser_sens->nrays, 0.0);
   std::vector<double> dist2_j(laser_ref->nrays, 1000000);
@@ -450,8 +450,8 @@ void IcpParams::QuickSort(std::vector<double>& array, int begin, int end) {
 }
 
 double IcpParams::KillOutliersTrim() {
-  LDP laser_ref = this->laser_ref;
-  LDP laser_sens = this->laser_sens;
+  LidarData* laser_ref = this->laser_ref;
+  LidarData* laser_sens = this->laser_sens;
 
   /* dist2, indexed by k, contains the error for the k-th correspondence */
   int k = 0;
@@ -733,8 +733,7 @@ void IcpParams::PLIcp(IcpResult* const result) {
       double perturb[6][3] = {{dt, 0, 0},  {-dt, 0, 0}, {0, dt, 0},
                               {0, -dt, 0}, {0, 0, dth}, {0, 0, -dth}};
 
-      int a;
-      for (a = 0; a < 6; a++) {
+      for (int a = 0; a < 6; a++) {
         // sm_debug("-- Restarting with perturbation #%d\n", a);
         IcpParams my_params = *this;
         Eigen::Vector3d start;
@@ -799,8 +798,8 @@ void IcpParams::PLIcp(IcpResult* const result) {
 
 int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
                                    Eigen::Vector3d* const x_new) {
-  LDP laser_ref = this->laser_ref;
-  LDP laser_sens = this->laser_sens;
+  LidarData* laser_ref = this->laser_ref;
+  LidarData* laser_sens = this->laser_sens;
 
   // struct GpcCorr connections[laser_sens->nrays];
   struct GpcCorr dummy;
@@ -821,7 +820,7 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
 
     connections[k].valid = 1;
 
-    if (laser_sens->corr[i].type == correspondence::corr_pl) {
+    if (laser_sens->corr[i].type == Correspondence::corr_pl) {
       connections[k].p[0] = laser_sens->points[i].p[0];
       connections[k].p[1] = laser_sens->points[i].p[1];
       connections[k].q[0] = laser_ref->points[j1].p[0];

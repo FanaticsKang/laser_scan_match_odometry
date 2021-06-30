@@ -271,9 +271,9 @@ void LaserScanMatcherOdometry::cloudCallback(
     initialized_ = true;
   }
 
-  LDP curr_ldp_scan;
-  PointCloudToLDP(cloud, curr_ldp_scan);
-  processScan(curr_ldp_scan, cloud_header.stamp);
+  LidarData curr_ldp_scan;
+  PointCloudToLDP(cloud, &curr_ldp_scan);
+  processScan(&curr_ldp_scan, cloud_header.stamp);
 }
 
 void LaserScanMatcherOdometry::scanCallback(
@@ -288,6 +288,7 @@ void LaserScanMatcherOdometry::scanCallback(
     }
     createCache(scan_msg);  // caches the sin and cos of all angles
 
+    prev_ldp_scan_ = new LidarData();
     laserScanToLDP(scan_msg, prev_ldp_scan_);
     last_icp_time_ = scan_msg->header.stamp;
     last_imu_yaw_ = latest_imu_yaw_;
@@ -295,7 +296,7 @@ void LaserScanMatcherOdometry::scanCallback(
     initialized_ = true;
   }
 
-  LDP curr_ldp_scan;
+  LidarData *curr_ldp_scan = new LidarData();
   laserScanToLDP(scan_msg, curr_ldp_scan);
   processScan(curr_ldp_scan, scan_msg->header.stamp);
 }
@@ -319,11 +320,10 @@ void LaserScanMatcherOdometry::odomCallback(
   }
 }
 
-void LaserScanMatcherOdometry::processScan(LDP &curr_ldp_scan,
+void LaserScanMatcherOdometry::processScan(LidarData *const curr_ldp_scan,
                                            const ros::Time &time) {
   struct timeval start, end;  // used for timing
   gettimeofday(&start, NULL);
-
   // CSM is used in the following way:
   // The scans are always in the laser frame
   // The reference scan (prevLDPcan_) has a pose of 0
@@ -507,7 +507,8 @@ printf("%f, %f, %f\n", input_.first_guess[0],
 
   // **** swap old and new
 
-  ld_free(prev_ldp_scan_);
+  // TODO
+  // ld_free(prev_ldp_scan_);
   prev_ldp_scan_ = curr_ldp_scan;
   last_icp_time_ = new_icp_time;
 
@@ -521,14 +522,15 @@ printf("%f, %f, %f\n", input_.first_guess[0],
 }
 
 void LaserScanMatcherOdometry::PointCloudToLDP(
-    const pcl::PointCloud<pcl::PointXYZ>::ConstPtr &cloud, LDP &ldp) {
+    const pcl::PointCloud<pcl::PointXYZ>::ConstPtr &cloud,
+    LidarData *const ldp) {
   unsigned int n = cloud->width * cloud->height;
-  ldp = ld_alloc_new(n);
+  ldp->Initialization(n);
 
   for (unsigned int i = 0; i < n; i++) {
     // calculate position in laser frame
 
-    if (is_nan(cloud->points[i].x) || is_nan(cloud->points[i].y)) {
+    if (isnan(cloud->points[i].x) || isnan(cloud->points[i].y)) {
       ROS_WARN(
           "Laser Scan Matcher: Cloud input contains NaN values. Please use a "
           "filtered cloud input.");
@@ -562,9 +564,10 @@ void LaserScanMatcherOdometry::PointCloudToLDP(
 }
 
 void LaserScanMatcherOdometry::laserScanToLDP(
-    const sensor_msgs::LaserScan::ConstPtr &scan_msg, LDP &ldp) {
+    const sensor_msgs::LaserScan::ConstPtr &scan_msg, LidarData *const ldp) {
   unsigned int n = scan_msg->ranges.size();
-  ldp = ld_alloc_new(n);
+
+  ldp->Initialization(n);
 
   for (unsigned int i = 0; i < n; i++) {
     // calculate position in laser frame
@@ -588,6 +591,7 @@ void LaserScanMatcherOdometry::laserScanToLDP(
     // Hold on
     ldp->cluster[i] = -1;
   }
+  std::cout << "ldp->InvalidIfOutside(): " << ldp->ValidLidar() << std::endl;
 
   ldp->min_theta = ldp->theta[0];
   ldp->max_theta = ldp->theta[n - 1];

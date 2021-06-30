@@ -21,7 +21,8 @@
 #include <pcl/point_types.h>
 #include <pcl_ros/point_cloud.h>
 
-#include <csm/csm_all.h>  // csm defines min and max, but Eigen complains
+// #include <csm/csm_all.h>  // csm defines min and max, but Eigen complains
+#include "icp_params.h"
 #undef min
 #undef max
 
@@ -80,9 +81,9 @@ class LaserScanMatcherOdometry {
   std::vector<double> a_sin_;
 
   // csm
-  sm_params input_;
-//   sm_result output_;
-  LDP prev_ldp_scan_;
+  IcpParams input_;
+  //   sm_result output_;
+  LidarData* prev_ldp_scan_;
 
   void initParams();
 
@@ -91,10 +92,11 @@ class LaserScanMatcherOdometry {
   void imuCallback(const sensor_msgs::ImuPtr& imu_msg);
   void odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg);
 
-  void processScan(LDP& curr_ldp_scan, const ros::Time& time);
+  void processScan(LidarData* const curr_ldp_scan, const ros::Time& time);
   void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,
-                      LDP& ldp);
-  void PointCloudToLDP(const PointCloudT::ConstPtr& cloud, LDP& ldp);
+                      LidarData* const ldp);
+  void PointCloudToLDP(const PointCloudT::ConstPtr& cloud,
+                       LidarData* const ldp);
 
   void createCache(const sensor_msgs::LaserScan::ConstPtr& scan_msg);
   bool getBaseToLaserTf(const std::string& frame_id);

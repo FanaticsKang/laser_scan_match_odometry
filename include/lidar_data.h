@@ -1,9 +1,14 @@
 #pragma once
-#include "csm/laser_data.h"
+// #include "csm/laser_data.h"
+#include "correspondence.h"
+#include "point2d.h"
 
-class LidarData : public laser_data {
+#include <vector>
+
+class LidarData {
  public:
-  LidarData(const laser_data& base) : laser_data(base){};
+  LidarData();
+  void Initialization(const size_t point_size);
   int CountEqual(const int* v, int n, int value);
   bool ValidLidar();
   void InvalidIfOutside(const double min_reading, const double max_reading);
@@ -39,4 +44,31 @@ class LidarData : public laser_data {
   int NextValidUp(int i) { return NextValid(i, +1); }
 
   int NextValidDown(int i) { return NextValid(i, -1); }
+
+ public:
+  int nrays;
+  double min_theta;
+  double max_theta;
+
+  std::vector<double> theta;
+  std::vector<int> valid;
+  std::vector<double> readings;
+  std::vector<int> cluster;
+  std::vector<double> alpha;
+  std::vector<double> cov_alpha;
+  std::vector<int> alpha_valid;
+  std::vector<double> readings_sigma;
+  std::vector<double> true_alpha;
+
+  std::vector<Correspondence> corr;
+
+  double true_pose[3];
+  double odometry[3];
+  double estimate[3];
+
+  /** Cartesian representation */
+  std::vector<Point2d> points;
+  /** Cartesian representation, in "world" (laser_ref) coordinates.
+      Computed using ld_compute_world_coords() */
+  std::vector<Point2d> points_w;
 };

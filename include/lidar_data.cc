@@ -4,6 +4,38 @@
 #include "math_utils.h"
 
 #include "lidar_data.h"
+LidarData::LidarData() {}
+
+void LidarData::Initialization(const size_t point_size) {
+  nrays = point_size;
+  valid.resize(point_size, 0);
+  readings.resize(point_size, std::numeric_limits<double>::quiet_NaN());
+  readings_sigma.resize(point_size, std::numeric_limits<double>::quiet_NaN());
+  theta.resize(point_size, std::numeric_limits<double>::quiet_NaN());
+
+  min_theta = std::numeric_limits<double>::quiet_NaN();
+  max_theta = std::numeric_limits<double>::quiet_NaN();
+
+  cluster.resize(point_size, -1);
+  alpha.resize(point_size, std::numeric_limits<double>::quiet_NaN());
+  cov_alpha.resize(point_size, std::numeric_limits<double>::quiet_NaN());
+  alpha_valid.resize(point_size, 0);
+
+  true_alpha.resize(point_size, std::numeric_limits<double>::quiet_NaN());
+
+  Correspondence tmp_corr;
+  tmp_corr.valid = 0;
+  tmp_corr.j1 = -1;
+  tmp_corr.j2 = -1;
+  corr.resize(point_size, tmp_corr);
+
+  Point2d tmp_point;
+  tmp_point.p[0] = tmp_point.p[0] = tmp_point.rho = tmp_point.phi =
+      std::numeric_limits<double>::quiet_NaN();
+
+  points.resize(point_size, tmp_point);
+  points_w.resize(point_size, tmp_point);
+}
 
 int LidarData::CountEqual(const int* v, int n, int value) {
   int num = 0;
@@ -124,8 +156,8 @@ void LidarData::ComputeWorldCoords(const Eigen::Vector3d& pose) {
   const double sin_theta = sin(pose_theta);
   const int nrays = this->nrays;
 
-  point2d* points = this->points;
-  point2d* points_w = this->points_w;
+  // point2d* points = this->points;
+  // point2d* points_w = this->points_w;
 
   for (int i = 0; i < nrays; i++) {
     if (!ValidRay(i)) {
@@ -250,8 +282,8 @@ bool LidarData::ValidLidar() {
     }
   }
   /* Checks that there is at least 10% valid rays */
-  const int num_valid = this->CountEqual(this->valid, this->nrays, 1);
-  const int num_invalid = this->CountEqual(this->valid, this->nrays, 0);
+  const int num_valid = this->CountEqual(this->valid.data(), this->nrays, 1);
+  const int num_invalid = this->CountEqual(this->valid.data(), this->nrays, 0);
 
   if (num_valid < this->nrays * 0.10) {
     LOG(ERROR) << "Valid: " << num_valid << "/" << this->nrays
