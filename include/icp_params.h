@@ -5,7 +5,7 @@
 #include "lidar_data.h"
 #include "math_utils.h"
 
-class GpcCorr {
+class GpcCorrespondence {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   // current point
@@ -46,18 +46,18 @@ class IcpParams {
 
   int TerminationCriterion(const Eigen::Vector3d& delta);
   int Compatible(const int i, const int j);
-  bool GpcSolve(const int total_size, const std::vector<GpcCorr>& c,
+  bool GpcSolve(const int total_size, const std::vector<GpcCorrespondence>& c,
                 Eigen::Vector3d* const x_new);
 
-  bool SolveOptimization(const std::vector<GpcCorr>& c,
+  bool SolveOptimization(const std::vector<GpcCorrespondence>& c,
                          const Eigen::Vector3d& x_old,
                          Eigen::Vector3d* const x_new);
 
-  double GpcTotalError(const std::vector<GpcCorr>& co, const int n,
+  double GpcTotalError(const std::vector<GpcCorrespondence>& co, const int n,
                        const Eigen::Vector3d& x);
 
   // PLICP解析解，见PL-ICP原文附录
-  double GpcError(const GpcCorr& co, const Eigen::Vector3d& x);
+  double GpcError(const GpcCorrespondence& co, const Eigen::Vector3d& x);
 
   int PolyGreatestRealRoot(int n, const double* a, double* root);
 

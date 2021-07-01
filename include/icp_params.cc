@@ -61,9 +61,9 @@ int IcpParams::PolyGreatestRealRoot(int n, const double* a, double* root) {
   return 1;
 }
 
-bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connections,
-                                  const Eigen::Vector3d& x_old,
-                                  Eigen::Vector3d* const x_new) {
+bool IcpParams::SolveOptimization(
+    const std::vector<GpcCorrespondence>& connections,
+    const Eigen::Vector3d& x_old, Eigen::Vector3d* const x_new) {
   // TODO some error in my g2o lib
   static g2o::SparseOptimizer optimizer;
   optimizer.edges().clear();
@@ -118,7 +118,7 @@ bool IcpParams::SolveOptimization(const std::vector<GpcCorr>& connections,
 }
 
 bool IcpParams::GpcSolve(const int total_size,
-                         const std::vector<GpcCorr>& connections,
+                         const std::vector<GpcCorrespondence>& connections,
                          Eigen::Vector3d* const x_out) {
   Eigen::Matrix4d d_bigM = Eigen::Matrix4d::Zero();
   Eigen::Vector4d d_g = Eigen::Vector4d::Zero();
@@ -247,7 +247,8 @@ bool IcpParams::GpcSolve(const int total_size,
   return true;
 }
 
-double IcpParams::GpcError(const GpcCorr& co, const Eigen::Vector3d& x) {
+double IcpParams::GpcError(const GpcCorrespondence& co,
+                           const Eigen::Vector3d& x) {
   double connections = cos(x[2]);
   double s = sin(x[2]);
   double e[2];
@@ -256,19 +257,11 @@ double IcpParams::GpcError(const GpcCorr& co, const Eigen::Vector3d& x) {
   double this_error = e[0] * e[0] * co.C[0][0] + 2 * e[0] * e[1] * co.C[0][1] +
                       e[1] * e[1] * co.C[1][1];
 
-  if (0) /* due to limited numerical precision, error might be negative */
-    if (this_error < 0) {
-      fprintf(
-          stderr,
-          "Something fishy: error = %lf e = [%lf %lf]  C = [%lf,%lf;%lf,%lf]\n",
-          this_error, e[0], e[1], co.C[0][0], co.C[0][1], co.C[1][0],
-          co.C[1][1]);
-    }
   return this_error;
 }
 
-double IcpParams::GpcTotalError(const std::vector<GpcCorr>& co, const int n,
-                                const Eigen::Vector3d& x) {
+double IcpParams::GpcTotalError(const std::vector<GpcCorrespondence>& co,
+                                const int n, const Eigen::Vector3d& x) {
   double error = 0;
   for (int i = 0; i < n; i++) {
     if (!co[i].valid) {
@@ -772,9 +765,9 @@ int IcpParams::ComputeNextEstimate(const Eigen::Vector3d x_old,
   LidarData* laser_ref = this->laser_ref;
   LidarData* laser_sens = this->laser_sens;
 
-  // struct GpcCorr connections[laser_sens->nrays];
-  GpcCorr dummy;
-  std::vector<GpcCorr> connections(laser_sens->nrays, dummy);
+  // struct GpcCorrespondence connections[laser_sens->nrays];
+  GpcCorrespondence dummy;
+  std::vector<GpcCorrespondence> connections(laser_sens->nrays, dummy);
 
   int k = 0;
   for (int i = 0; i < laser_sens->nrays; i++) {
